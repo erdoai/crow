@@ -26,14 +26,8 @@ async def import_config(db: Database, config: dict[str, Any]) -> None:
     mcp = config.get("mcp", {})
 
     for name, server in mcp.items():
-        await db.upsert_mcp_server(
-            name=name,
-            transport=server.get("transport", "stdio"),
-            command=server.get("command"),
-            url=server.get("url"),
-            env=server.get("env"),
-        )
-        logger.info("Imported MCP server: %s", name)
+        await db.upsert_mcp_server(name=name, url=server["url"])
+        logger.info("Imported MCP server: %s → %s", name, server["url"])
 
     for name, agent in agents.items():
         await db.upsert_agent_def(
@@ -63,14 +57,7 @@ async def export_config(db: Database) -> dict[str, Any]:
 
     mcp = {}
     for s in await db.list_mcp_servers():
-        entry: dict[str, Any] = {"transport": s["transport"]}
-        if s["command"]:
-            entry["command"] = s["command"]
-        if s["url"]:
-            entry["url"] = s["url"]
-        if s["env"] and s["env"] != {}:
-            entry["env"] = s["env"]
-        mcp[s["name"]] = entry
+        mcp[s["name"]] = {"url": s["url"]}
 
     return {"agents": agents, "mcp": mcp}
 

@@ -162,15 +162,7 @@ def list_jobs(
 @mcp_app.command("add")
 def mcp_add(
     name: str = typer.Argument(help="MCP server name"),
-    command: str | None = typer.Option(
-        None, "--command", help="Command for stdio transport"
-    ),
-    url: str | None = typer.Option(
-        None, "--url", help="URL for http transport"
-    ),
-    transport: str = typer.Option(
-        "stdio", "--transport", help="Transport type"
-    ),
+    url: str = typer.Argument(help="MCP server URL"),
     server_url: str = typer.Option(
         DEFAULT_URL, "--server", help="Crow server URL"
     ),
@@ -178,23 +170,12 @@ def mcp_add(
     """Add an MCP server."""
     import httpx
 
-    if not command and not url:
-        console.print("[red]Must provide --command or --url[/red]")
-        raise typer.Exit(1)
-    if url and transport == "stdio":
-        transport = "http"
-
     resp = httpx.post(
         f"{server_url}/mcp-servers",
-        json={
-            "name": name,
-            "transport": transport,
-            "command": command,
-            "url": url,
-        },
+        json={"name": name, "url": url},
     )
     resp.raise_for_status()
-    console.print(f"[green]Added MCP server:[/green] {name}")
+    console.print(f"[green]Added MCP server:[/green] {name} → {url}")
 
 
 @mcp_app.command("list")

@@ -76,10 +76,7 @@ async def claim_next_job(request: Request, x_worker_key: str = Header()):
             if mcp:
                 mcp_servers.append({
                     "name": mcp["name"],
-                    "transport": mcp["transport"],
-                    "command": mcp.get("command"),
-                    "url": mcp.get("url"),
-                    "env": mcp.get("env"),
+                    "url": mcp["url"],
                 })
 
     return {

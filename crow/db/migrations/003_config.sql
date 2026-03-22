@@ -12,9 +12,6 @@ CREATE TABLE agent_defs (
 -- MCP server configs (loaded from crow.yml)
 CREATE TABLE mcp_servers (
     name TEXT PRIMARY KEY,
-    transport TEXT NOT NULL,
-    command TEXT,
-    url TEXT,
-    env JSONB DEFAULT '{}',
+    url TEXT NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );

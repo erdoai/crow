@@ -28,8 +28,6 @@ agents:
 
 mcp: {}
   # devbot:
-  #   command: "devbot mcp-server"
-  #   transport: stdio
+  #   url: http://devbot:8484/mcp
   # pilot:
-  #   command: "pilot mcp-server"
-  #   transport: stdio
+  #   url: http://pilot:9721/mcp

@@ -371,28 +371,14 @@ class Database:
 
     # -- MCP Servers --
 
-    async def upsert_mcp_server(
-        self,
-        name: str,
-        transport: str,
-        command: str | None = None,
-        url: str | None = None,
-        env: dict | None = None,
-    ) -> None:
-        import json as json_mod
-
+    async def upsert_mcp_server(self, name: str, url: str) -> None:
         await self._pool.execute(
-            """INSERT INTO mcp_servers
-               (name, transport, command, url, env, updated_at)
-               VALUES ($1, $2, $3, $4, $5, $6)
+            """INSERT INTO mcp_servers (name, url, updated_at)
+               VALUES ($1, $2, $3)
                ON CONFLICT (name) DO UPDATE SET
-                 transport = $2, command = $3, url = $4,
-                 env = $5, updated_at = $6""",
+                 url = $2, updated_at = $3""",
             name,
-            transport,
-            command,
             url,
-            json_mod.dumps(env or {}),
             datetime.now(UTC),
         )
 
