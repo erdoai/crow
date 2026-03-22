@@ -34,7 +34,7 @@ async def worker_loop(server_url: str, settings: Settings) -> None:
         while True:
             try:
                 # Poll for next job
-                resp = await client.get(f"{server_url}/jobs/next", headers=headers)
+                resp = await client.get(f"{server_url}/jobs/next/claim", headers=headers)
                 resp.raise_for_status()
 
                 job_data = resp.json()

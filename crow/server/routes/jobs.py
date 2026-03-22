@@ -1,7 +1,9 @@
-"""Worker-facing job queue endpoints."""
+"""Job queue endpoints — public listing + worker-facing claim/result."""
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel
+
+from crow.events.types import MESSAGE_RESPONSE, Event
 
 router = APIRouter(prefix="/jobs")
 
@@ -12,7 +14,34 @@ def _check_worker_key(request: Request, x_worker_key: str = Header()) -> None:
         raise HTTPException(status_code=401, detail="Invalid worker key")
 
 
-@router.get("/next")
+# -- Public --
+
+
+@router.get("")
+async def list_jobs(
+    request: Request,
+    status: str | None = None,
+    limit: int = 50,
+):
+    """List recent jobs."""
+    db = request.app.state.db
+    return await db.list_jobs(status=status, limit=limit)
+
+
+@router.get("/{job_id}")
+async def get_job(job_id: str, request: Request):
+    """Get a specific job."""
+    db = request.app.state.db
+    job = await db.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
+
+
+# -- Worker-facing --
+
+
+@router.get("/next/claim")
 async def claim_next_job(request: Request, x_worker_key: str = Header()):
     """Worker claims the next pending job."""
     _check_worker_key(request, x_worker_key)
@@ -61,14 +90,17 @@ class JobResult(BaseModel):
 
 @router.post("/{job_id}/result")
 async def report_result(
-    job_id: str, result: JobResult, request: Request, x_worker_key: str = Header()
+    job_id: str,
+    result: JobResult,
+    request: Request,
+    x_worker_key: str = Header(),
 ):
     """Worker reports job completion."""
     _check_worker_key(request, x_worker_key)
     db = request.app.state.db
     await db.complete_job(job_id, result.output, result.tokens_used)
 
-    # If there's a conversation, save the response as an assistant message
+    # If there's a conversation, save the response and notify gateways
     job = await db.get_job(job_id)
     if job and job["conversation_id"]:
         await db.insert_message(
@@ -78,19 +110,15 @@ async def report_result(
             agent_name=job["agent_name"],
         )
 
-        # Publish response event for gateways
-        bus = request.app.state.bus
-        from crow.events.types import MESSAGE_RESPONSE, Event
-
-        conv = await db.list_conversations()
-        matching = [c for c in conv if c["id"] == job["conversation_id"]]
-        if matching:
+        conv = await db.get_conversation(job["conversation_id"])
+        if conv:
+            bus = request.app.state.bus
             await bus.publish(
                 Event(
                     type=MESSAGE_RESPONSE,
                     data={
-                        "gateway": matching[0]["gateway"],
-                        "gateway_thread_id": matching[0]["gateway_thread_id"],
+                        "gateway": conv["gateway"],
+                        "gateway_thread_id": conv["gateway_thread_id"],
                         "text": result.output,
                         "agent_name": job["agent_name"],
                     },
@@ -106,7 +134,10 @@ class JobError(BaseModel):
 
 @router.post("/{job_id}/error")
 async def report_error(
-    job_id: str, err: JobError, request: Request, x_worker_key: str = Header()
+    job_id: str,
+    err: JobError,
+    request: Request,
+    x_worker_key: str = Header(),
 ):
     """Worker reports job failure."""
     _check_worker_key(request, x_worker_key)
@@ -117,9 +148,10 @@ async def report_error(
 
 @router.post("/{job_id}/heartbeat")
 async def job_heartbeat(
-    job_id: str, request: Request, x_worker_key: str = Header()
+    job_id: str,
+    request: Request,
+    x_worker_key: str = Header(),
 ):
     """Worker reports job is still running."""
     _check_worker_key(request, x_worker_key)
-    # For now just acknowledge — could update a last_heartbeat column
     return {"status": "ok"}

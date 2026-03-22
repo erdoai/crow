@@ -58,6 +58,12 @@ class Database:
                 "updated_at": now,
             }
 
+    async def get_conversation(self, conversation_id: str) -> dict | None:
+        row = await self._pool.fetchrow(
+            "SELECT * FROM conversations WHERE id = $1", conversation_id
+        )
+        return dict(row) if row else None
+
     async def list_conversations(self, limit: int = 50) -> list[dict]:
         rows = await self._pool.fetch(
             "SELECT * FROM conversations ORDER BY updated_at DESC LIMIT $1", limit

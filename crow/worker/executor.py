@@ -53,19 +53,25 @@ async def execute_tool(
     """Execute a tool call and return the result as a string."""
     from crow.agents.tools import devbot, pilot
 
+    headers = {"x-worker-key": worker_key}
+
     if tool_name == "delegate_to_agent":
-        # Delegation creates a new job on the server
+        # Create a child job for the target agent on the server
+        agent_name = tool_input["agent_name"]
+        task = tool_input["task"]
         async with httpx.AsyncClient() as client:
             resp = await client.post(
-                f"{server_url}/jobs/{job['id']}/result",
-                headers={"x-worker-key": worker_key},
+                f"{server_url}/messages",
                 json={
-                    "output": f"Delegating to {tool_input['agent_name']}: {tool_input['task']}",
-                    "tokens_used": 0,
+                    "text": task,
+                    "thread_id": (
+                        f"delegate-{job.get('conversation_id', 'none')}"
+                    ),
                 },
                 timeout=10,
             )
-        return f"Delegated to {tool_input['agent_name']}"
+            resp.raise_for_status()
+        return f"Delegated to {agent_name}: job created. It will run asynchronously."
 
     elif tool_name == "devbot.list_jobs":
         return await devbot.list_jobs(
@@ -75,31 +81,57 @@ async def execute_tool(
         )
 
     elif tool_name == "devbot.get_job":
-        return await devbot.get_job(settings.devbot_url, tool_input["job_id"])
+        return await devbot.get_job(
+            settings.devbot_url, tool_input["job_id"]
+        )
 
     elif tool_name == "devbot.create_job":
         return await devbot.create_job(
-            settings.devbot_url, tool_input["prompt"], tool_input["repo"]
+            settings.devbot_url,
+            tool_input["prompt"],
+            tool_input["repo"],
         )
 
     elif tool_name == "pilot.get_status":
         return await pilot.get_status(settings.pilot_url)
 
-    elif tool_name in ("knowledge.search", "knowledge.write", "knowledge.archive"):
-        # Knowledge tools call back to the server
+    elif tool_name == "knowledge.search":
         async with httpx.AsyncClient() as client:
-            if tool_name == "knowledge.search":
-                resp = await client.get(
-                    f"{server_url}/agents/{job['agent_name']}/knowledge",
-                    params={"category": tool_input.get("category")},
-                    timeout=10,
-                )
-                return resp.text
-            elif tool_name == "knowledge.write":
-                # TODO: implement write endpoint
-                return json.dumps({"status": "knowledge write not yet implemented"})
-            else:
-                return json.dumps({"status": "knowledge archive not yet implemented"})
+            resp = await client.get(
+                f"{server_url}/agents/{job['agent_name']}/knowledge",
+                params={
+                    k: v
+                    for k, v in {"category": tool_input.get("category")}.items()
+                    if v
+                },
+                timeout=10,
+            )
+            return resp.text
+
+    elif tool_name == "knowledge.write":
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{server_url}/agents/{job['agent_name']}/knowledge",
+                headers=headers,
+                json={
+                    "category": tool_input["category"],
+                    "title": tool_input["title"],
+                    "content": tool_input["content"],
+                    "tags": tool_input.get("tags", []),
+                },
+                timeout=10,
+            )
+            return resp.text
+
+    elif tool_name == "knowledge.archive":
+        async with httpx.AsyncClient() as client:
+            kid = tool_input["knowledge_id"]
+            resp = await client.post(
+                f"{server_url}/agents/{job['agent_name']}/knowledge/{kid}/archive",
+                headers=headers,
+                timeout=10,
+            )
+            return resp.text
 
     return json.dumps({"error": f"Unknown tool: {tool_name}"})
 
@@ -127,36 +159,35 @@ async def run_agent(
 
     # For PA agent, include available agents list
     if agent["name"] == "pa":
-        # Minimal agent descriptions for the PA prompt
         prompt_context["agents"] = [
-            {"name": "monitor", "description": "Watches devbot, pilot, erdo, trading systems"},
-            {"name": "planner", "description": "Breaks down goals, coordinates work"},
-            {"name": "reviewer", "description": "Reviews PRs and agent outputs"},
+            {
+                "name": "monitor",
+                "description": "Watches devbot, pilot, erdo, trading systems",
+            },
+            {
+                "name": "planner",
+                "description": "Breaks down goals, coordinates work",
+            },
+            {
+                "name": "reviewer",
+                "description": "Reviews PRs and agent outputs",
+            },
         ]
 
     system_prompt = render_prompt(agent["prompt_template"], prompt_context)
 
-    # Build messages
-    api_messages = []
-
-    # Inject knowledge as tool_use/tool_result pairs (erdo pattern)
+    # Inject knowledge into system prompt (simpler and more reliable
+    # than tool_use/tool_result pairs which need careful ordering)
     if knowledge_entries:
-        knowledge_summary = "\n\n".join(
+        knowledge_section = "\n\n## Your knowledge\n\n"
+        knowledge_section += "\n\n".join(
             f"### [{e['category']}] {e['title']}\n{e['content']}"
             for e in knowledge_entries
         )
-        api_messages.append({
-            "role": "user",
-            "content": [
-                {
-                    "type": "tool_result",
-                    "tool_use_id": "knowledge_context",
-                    "content": knowledge_summary,
-                }
-            ],
-        })
+        system_prompt += knowledge_section
 
-    # Add conversation history
+    # Build messages from conversation history
+    api_messages = []
     for msg in conversation_messages:
         api_messages.append({
             "role": msg["role"],
@@ -177,7 +208,7 @@ async def run_agent(
     # Agentic loop
     max_iterations = 10
     for _ in range(max_iterations):
-        kwargs = {
+        kwargs: dict = {
             "model": settings.anthropic_model,
             "max_tokens": 4096,
             "system": system_prompt,
@@ -187,25 +218,28 @@ async def run_agent(
             kwargs["tools"] = tools
 
         response = await client.messages.create(**kwargs)
-        total_tokens += response.usage.input_tokens + response.usage.output_tokens
+        total_tokens += (
+            response.usage.input_tokens + response.usage.output_tokens
+        )
 
         # Check if we're done
         if response.stop_reason == "end_turn":
-            # Extract text response
             text_parts = [
-                block.text for block in response.content if block.type == "text"
+                block.text
+                for block in response.content
+                if block.type == "text"
             ]
             return "\n".join(text_parts) or "(no response)", total_tokens
 
         # Handle tool use
         if response.stop_reason == "tool_use":
-            # Add assistant message with tool use
             api_messages.append({
                 "role": "assistant",
-                "content": [block.model_dump() for block in response.content],
+                "content": [
+                    block.model_dump() for block in response.content
+                ],
             })
 
-            # Execute each tool call
             tool_results = []
             for block in response.content:
                 if block.type == "tool_use":
@@ -225,10 +259,14 @@ async def run_agent(
 
             api_messages.append({"role": "user", "content": tool_results})
         else:
-            # Unexpected stop reason
             text_parts = [
-                block.text for block in response.content if block.type == "text"
+                block.text
+                for block in response.content
+                if block.type == "text"
             ]
-            return "\n".join(text_parts) or f"(stopped: {response.stop_reason})", total_tokens
+            return (
+                "\n".join(text_parts)
+                or f"(stopped: {response.stop_reason})"
+            ), total_tokens
 
     return "(max iterations reached)", total_tokens
