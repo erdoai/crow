@@ -1,22 +1,26 @@
-"""FastAPI application with lifespan — starts DB, event bus, gateways, router."""
+"""FastAPI application with lifespan."""
 
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from crow.agents.definitions.monitor import monitor
-from crow.agents.definitions.pa import pa
-from crow.agents.definitions.planner import planner
-from crow.agents.definitions.reviewer import reviewer
-from crow.agents.registry import AgentRegistry
+from crow.config.loader import auto_import_if_empty
 from crow.config.settings import Settings
 from crow.db.database import Database
 from crow.events.bus import EventBus
 from crow.gateways.api.gateway import APIGateway
 from crow.gateways.imessage.gateway import IMessageGateway
 from crow.router.router import Router
-from crow.server.routes import agents, conversations, health, jobs, messages, workers
+from crow.server.routes import (
+    agents,
+    config,
+    conversations,
+    health,
+    jobs,
+    messages,
+    workers,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,17 +34,12 @@ async def lifespan(app: FastAPI):
     db = await Database.connect(settings.database_url)
     app.state.db = db
 
+    # Auto-import crow.yml if DB has no agents
+    await auto_import_if_empty(db)
+
     # Event bus
     bus = EventBus()
     app.state.bus = bus
-
-    # Agent registry
-    registry = AgentRegistry()
-    registry.register(pa)
-    registry.register(monitor)
-    registry.register(planner)
-    registry.register(reviewer)
-    app.state.registry = registry
 
     # Router (subscribes to message.inbound)
     _router = Router(bus, db)
@@ -77,4 +76,5 @@ def create_app() -> FastAPI:
     app.include_router(conversations.router)
     app.include_router(jobs.router)
     app.include_router(workers.router)
+    app.include_router(config.router)
     return app

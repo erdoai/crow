@@ -9,6 +9,7 @@ import httpx
 import jinja2
 
 from crow.config.settings import Settings
+from crow.worker.mcp_client import MCPConnection, connect_mcp
 
 logger = logging.getLogger(__name__)
 
@@ -25,94 +26,117 @@ def render_prompt(template_name: str, context: dict) -> str:
     return template.render(**context)
 
 
-def build_tool_definitions(tool_names: list[str]) -> list[dict]:
-    """Build Anthropic tool definitions from tool names."""
-    from crow.agents.tools import delegate, devbot, knowledge, pilot
+# -- Built-in tools (delegate, knowledge) --
 
-    tool_map = {
-        "delegate_to_agent": delegate.TOOL_DEF,
-        "devbot.list_jobs": devbot.LIST_JOBS_DEF,
-        "devbot.get_job": devbot.GET_JOB_DEF,
-        "devbot.create_job": devbot.CREATE_JOB_DEF,
-        "pilot.get_status": pilot.GET_STATUS_DEF,
-        "knowledge.search": knowledge.SEARCH_DEF,
-        "knowledge.write": knowledge.WRITE_DEF,
-        "knowledge.archive": knowledge.ARCHIVE_DEF,
-    }
-    return [tool_map[name] for name in tool_names if name in tool_map]
+BUILTIN_TOOLS = {
+    "delegate_to_agent": {
+        "name": "delegate_to_agent",
+        "description": "Delegate a task to a specialist agent.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "agent_name": {
+                    "type": "string",
+                    "description": "Agent to delegate to",
+                },
+                "task": {
+                    "type": "string",
+                    "description": "What the agent should do",
+                },
+            },
+            "required": ["agent_name", "task"],
+        },
+    },
+    "knowledge_search": {
+        "name": "knowledge_search",
+        "description": "Search PARA knowledge base via semantic + keyword.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query"},
+                "category": {
+                    "type": "string",
+                    "enum": ["project", "area", "resource", "archive"],
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    "knowledge_write": {
+        "name": "knowledge_write",
+        "description": "Save a learning to PARA knowledge base.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "enum": ["project", "area", "resource"],
+                },
+                "title": {"type": "string"},
+                "content": {"type": "string"},
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+            },
+            "required": ["category", "title", "content"],
+        },
+    },
+    "knowledge_archive": {
+        "name": "knowledge_archive",
+        "description": "Archive a knowledge entry.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "knowledge_id": {"type": "string"},
+            },
+            "required": ["knowledge_id"],
+        },
+    },
+}
 
 
-async def execute_tool(
+async def execute_builtin(
     tool_name: str,
     tool_input: dict,
-    settings: Settings,
     server_url: str,
     worker_key: str,
     job: dict,
 ) -> str:
-    """Execute a tool call and return the result as a string."""
-    from crow.agents.tools import devbot, pilot
-
+    """Execute a built-in tool."""
     headers = {"x-worker-key": worker_key}
-    # Normalize: Claude returns underscore names, our refs use dots
-    prefixes = ("devbot_", "pilot_", "knowledge_")
-    if tool_name.startswith(prefixes):
-        tool_name = tool_name.replace("_", ".", 1)
 
     if tool_name == "delegate_to_agent":
-        # Create a child job for the target agent on the server
-        agent_name = tool_input["agent_name"]
-        task = tool_input["task"]
         async with httpx.AsyncClient() as client:
-            resp = await client.post(
+            await client.post(
                 f"{server_url}/messages",
                 json={
-                    "text": task,
+                    "text": tool_input["task"],
                     "thread_id": (
                         f"delegate-{job.get('conversation_id', 'none')}"
                     ),
                 },
                 timeout=10,
             )
-            resp.raise_for_status()
-        return f"Delegated to {agent_name}: job created. It will run asynchronously."
+        return f"Delegated to {tool_input['agent_name']}: job created."
 
-    elif tool_name == "devbot.list_jobs":
-        return await devbot.list_jobs(
-            settings.devbot_url,
-            status=tool_input.get("status"),
-            limit=tool_input.get("limit", 10),
-        )
-
-    elif tool_name == "devbot.get_job":
-        return await devbot.get_job(
-            settings.devbot_url, tool_input["job_id"]
-        )
-
-    elif tool_name == "devbot.create_job":
-        return await devbot.create_job(
-            settings.devbot_url,
-            tool_input["prompt"],
-            tool_input["repo"],
-        )
-
-    elif tool_name == "pilot.get_status":
-        return await pilot.get_status(settings.pilot_url)
-
-    elif tool_name == "knowledge.search":
+    elif tool_name == "knowledge_search":
         async with httpx.AsyncClient() as client:
+            params = {
+                k: v
+                for k, v in {
+                    "category": tool_input.get("category")
+                }.items()
+                if v
+            }
             resp = await client.get(
                 f"{server_url}/agents/{job['agent_name']}/knowledge",
-                params={
-                    k: v
-                    for k, v in {"category": tool_input.get("category")}.items()
-                    if v
-                },
+                params=params,
                 timeout=10,
             )
             return resp.text
 
-    elif tool_name == "knowledge.write":
+    elif tool_name == "knowledge_write":
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 f"{server_url}/agents/{job['agent_name']}/knowledge",
@@ -127,17 +151,18 @@ async def execute_tool(
             )
             return resp.text
 
-    elif tool_name == "knowledge.archive":
+    elif tool_name == "knowledge_archive":
         async with httpx.AsyncClient() as client:
             kid = tool_input["knowledge_id"]
             resp = await client.post(
-                f"{server_url}/agents/{job['agent_name']}/knowledge/{kid}/archive",
+                f"{server_url}/agents/{job['agent_name']}"
+                f"/knowledge/{kid}/archive",
                 headers=headers,
                 timeout=10,
             )
             return resp.text
 
-    return json.dumps({"error": f"Unknown tool: {tool_name}"})
+    return json.dumps({"error": f"Unknown built-in: {tool_name}"})
 
 
 async def run_agent(
@@ -151,6 +176,7 @@ async def run_agent(
     agent = job_data["agent"]
     conversation_messages = job_data.get("messages", [])
     knowledge_entries = job_data.get("knowledge", [])
+    mcp_configs = job_data.get("mcp_servers", [])
 
     if not agent:
         return f"Unknown agent: {job['agent_name']}", 0
@@ -160,13 +186,11 @@ async def run_agent(
         "devbot_url": settings.devbot_url,
         "pilot_url": settings.pilot_url,
     }
-
-    # For PA agent, include available agents list
     if agent["name"] == "pa":
         prompt_context["agents"] = [
             {
                 "name": "monitor",
-                "description": "Watches devbot, pilot, erdo, trading systems",
+                "description": "Watches devbot, pilot, erdo, trading",
             },
             {
                 "name": "planner",
@@ -180,8 +204,7 @@ async def run_agent(
 
     system_prompt = render_prompt(agent["prompt_template"], prompt_context)
 
-    # Inject knowledge into system prompt (simpler and more reliable
-    # than tool_use/tool_result pairs which need careful ordering)
+    # Inject knowledge into system prompt
     if knowledge_entries:
         knowledge_section = "\n\n## Your knowledge\n\n"
         knowledge_section += "\n\n".join(
@@ -190,87 +213,140 @@ async def run_agent(
         )
         system_prompt += knowledge_section
 
-    # Build messages from conversation history
+    # Build messages
     api_messages = []
     for msg in conversation_messages:
         api_messages.append({
             "role": msg["role"],
             "content": msg["content"],
         })
-
-    # If no conversation history, use the job input directly
     if not conversation_messages:
         api_messages.append({"role": "user", "content": job["input"]})
 
-    # Build tool definitions
-    tools = build_tool_definitions(agent.get("tools", []))
+    # Collect built-in tool definitions
+    builtin_names = set(agent.get("tools", []))
+    tools = [
+        BUILTIN_TOOLS[name]
+        for name in builtin_names
+        if name in BUILTIN_TOOLS
+    ]
 
-    # Call Claude
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-    total_tokens = 0
+    # Connect to MCP servers and collect their tools
+    mcp_connections: list[MCPConnection] = []
+    mcp_stack = None
 
-    # Agentic loop
-    max_iterations = 10
-    for _ in range(max_iterations):
-        kwargs: dict = {
-            "model": settings.anthropic_model,
-            "max_tokens": 4096,
-            "system": system_prompt,
-            "messages": api_messages,
-        }
-        if tools:
-            kwargs["tools"] = tools
+    try:
+        if mcp_configs:
+            from contextlib import AsyncExitStack
 
-        response = await client.messages.create(**kwargs)
-        total_tokens += (
-            response.usage.input_tokens + response.usage.output_tokens
-        )
+            mcp_stack = AsyncExitStack()
+            await mcp_stack.__aenter__()
 
-        # Check if we're done
-        if response.stop_reason == "end_turn":
-            text_parts = [
-                block.text
-                for block in response.content
-                if block.type == "text"
-            ]
-            return "\n".join(text_parts) or "(no response)", total_tokens
-
-        # Handle tool use
-        if response.stop_reason == "tool_use":
-            api_messages.append({
-                "role": "assistant",
-                "content": [
-                    block.model_dump() for block in response.content
-                ],
-            })
-
-            tool_results = []
-            for block in response.content:
-                if block.type == "tool_use":
-                    result = await execute_tool(
-                        block.name,
-                        block.input,
-                        settings,
-                        server_url,
-                        worker_key,
-                        job,
+            for cfg in mcp_configs:
+                try:
+                    conn = await mcp_stack.enter_async_context(
+                        connect_mcp(cfg)
                     )
+                    mcp_tools = await conn.list_tools()
+                    tools.extend(mcp_tools)
+                    mcp_connections.append(conn)
+                    logger.info(
+                        "MCP %s: %d tools",
+                        cfg["name"],
+                        len(mcp_tools),
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to connect MCP server: %s", cfg["name"]
+                    )
+
+        # Call Claude
+        client = anthropic.AsyncAnthropic(
+            api_key=settings.anthropic_api_key
+        )
+        total_tokens = 0
+        max_iterations = 10
+
+        for _ in range(max_iterations):
+            kwargs: dict = {
+                "model": settings.anthropic_model,
+                "max_tokens": 4096,
+                "system": system_prompt,
+                "messages": api_messages,
+            }
+            if tools:
+                kwargs["tools"] = tools
+
+            response = await client.messages.create(**kwargs)
+            total_tokens += (
+                response.usage.input_tokens + response.usage.output_tokens
+            )
+
+            if response.stop_reason == "end_turn":
+                text_parts = [
+                    b.text for b in response.content if b.type == "text"
+                ]
+                return (
+                    "\n".join(text_parts) or "(no response)",
+                    total_tokens,
+                )
+
+            if response.stop_reason == "tool_use":
+                api_messages.append({
+                    "role": "assistant",
+                    "content": [
+                        b.model_dump() for b in response.content
+                    ],
+                })
+
+                tool_results = []
+                for block in response.content:
+                    if block.type != "tool_use":
+                        continue
+
+                    # Dispatch: built-in or MCP?
+                    if block.name in BUILTIN_TOOLS:
+                        result = await execute_builtin(
+                            block.name,
+                            block.input,
+                            server_url,
+                            worker_key,
+                            job,
+                        )
+                    else:
+                        # Try MCP connections
+                        result = None
+                        for conn in mcp_connections:
+                            if conn.has_tool(block.name):
+                                result = await conn.call_tool(
+                                    block.name, block.input
+                                )
+                                break
+                        if result is None:
+                            result = json.dumps(
+                                {"error": f"Unknown tool: {block.name}"}
+                            )
+
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,
                         "content": result,
                     })
 
-            api_messages.append({"role": "user", "content": tool_results})
-        else:
-            text_parts = [
-                block.text
-                for block in response.content
-                if block.type == "text"
-            ]
-            return (
-                "\n".join(text_parts)
-                or f"(stopped: {response.stop_reason})"
-            ), total_tokens
+                api_messages.append(
+                    {"role": "user", "content": tool_results}
+                )
+            else:
+                text_parts = [
+                    b.text for b in response.content if b.type == "text"
+                ]
+                return (
+                    "\n".join(text_parts)
+                    or f"(stopped: {response.stop_reason})"
+                ), total_tokens
 
-    return "(max iterations reached)", total_tokens
+        return "(max iterations reached)", total_tokens
+
+    finally:
+        if mcp_stack:
+            await mcp_stack.__aexit__(None, None, None)

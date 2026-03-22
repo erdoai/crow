@@ -5,3 +5,4 @@ dist/
 .env
 .venv/
 .scaffold/
+.DS_Store

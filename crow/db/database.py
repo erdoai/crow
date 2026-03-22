@@ -322,3 +322,93 @@ class Database:
             datetime.now(UTC),
             knowledge_id,
         )
+
+    # -- Agent Definitions --
+
+    async def upsert_agent_def(
+        self,
+        name: str,
+        description: str,
+        prompt_template: str,
+        tools: list[str] | None = None,
+        mcp_servers: list[str] | None = None,
+        knowledge_areas: list[str] | None = None,
+    ) -> None:
+        await self._pool.execute(
+            """INSERT INTO agent_defs
+               (name, description, prompt_template, tools,
+                mcp_servers, knowledge_areas, updated_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)
+               ON CONFLICT (name) DO UPDATE SET
+                 description = $2, prompt_template = $3,
+                 tools = $4, mcp_servers = $5,
+                 knowledge_areas = $6, updated_at = $7""",
+            name,
+            description,
+            prompt_template,
+            tools or [],
+            mcp_servers or [],
+            knowledge_areas or [],
+            datetime.now(UTC),
+        )
+
+    async def get_agent_def(self, name: str) -> dict | None:
+        row = await self._pool.fetchrow(
+            "SELECT * FROM agent_defs WHERE name = $1", name
+        )
+        return dict(row) if row else None
+
+    async def list_agent_defs(self) -> list[dict]:
+        rows = await self._pool.fetch(
+            "SELECT * FROM agent_defs ORDER BY name"
+        )
+        return [dict(r) for r in rows]
+
+    async def delete_agent_def(self, name: str) -> None:
+        await self._pool.execute(
+            "DELETE FROM agent_defs WHERE name = $1", name
+        )
+
+    # -- MCP Servers --
+
+    async def upsert_mcp_server(
+        self,
+        name: str,
+        transport: str,
+        command: str | None = None,
+        url: str | None = None,
+        env: dict | None = None,
+    ) -> None:
+        import json as json_mod
+
+        await self._pool.execute(
+            """INSERT INTO mcp_servers
+               (name, transport, command, url, env, updated_at)
+               VALUES ($1, $2, $3, $4, $5, $6)
+               ON CONFLICT (name) DO UPDATE SET
+                 transport = $2, command = $3, url = $4,
+                 env = $5, updated_at = $6""",
+            name,
+            transport,
+            command,
+            url,
+            json_mod.dumps(env or {}),
+            datetime.now(UTC),
+        )
+
+    async def get_mcp_server(self, name: str) -> dict | None:
+        row = await self._pool.fetchrow(
+            "SELECT * FROM mcp_servers WHERE name = $1", name
+        )
+        return dict(row) if row else None
+
+    async def list_mcp_servers(self) -> list[dict]:
+        rows = await self._pool.fetch(
+            "SELECT * FROM mcp_servers ORDER BY name"
+        )
+        return [dict(r) for r in rows]
+
+    async def delete_mcp_server(self, name: str) -> None:
+        await self._pool.execute(
+            "DELETE FROM mcp_servers WHERE name = $1", name
+        )

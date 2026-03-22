@@ -52,34 +52,50 @@ async def claim_next_job(request: Request, x_worker_key: str = Header()):
     if not job:
         return None
 
-    # Enrich with agent definition and context
-    registry = request.app.state.registry
-    agent_def = registry.get(job["agent_name"])
+    # Load agent definition from DB
+    agent_def = await db.get_agent_def(job["agent_name"])
 
-    # Load conversation history if there's a conversation
+    # Load conversation history
     messages = []
     if job["conversation_id"]:
         messages = await db.get_messages(job["conversation_id"])
 
     # Load relevant knowledge
     knowledge = []
-    if agent_def and agent_def.knowledge_areas:
+    if agent_def and agent_def.get("knowledge_areas"):
         knowledge = await db.search_knowledge(
             agent_name=job["agent_name"],
             limit=20,
         )
 
+    # Load MCP server configs for this agent
+    mcp_servers = []
+    if agent_def and agent_def.get("mcp_servers"):
+        for mcp_name in agent_def["mcp_servers"]:
+            mcp = await db.get_mcp_server(mcp_name)
+            if mcp:
+                mcp_servers.append({
+                    "name": mcp["name"],
+                    "transport": mcp["transport"],
+                    "command": mcp.get("command"),
+                    "url": mcp.get("url"),
+                    "env": mcp.get("env"),
+                })
+
     return {
         "job": job,
         "agent": {
-            "name": agent_def.name,
-            "description": agent_def.description,
-            "prompt_template": agent_def.prompt_template,
-            "tools": [t.name for t in agent_def.tools],
-            "knowledge_areas": agent_def.knowledge_areas,
+            "name": agent_def["name"],
+            "description": agent_def["description"],
+            "prompt_template": agent_def["prompt_template"],
+            "tools": list(agent_def.get("tools") or []),
+            "knowledge_areas": list(
+                agent_def.get("knowledge_areas") or []
+            ),
         } if agent_def else None,
         "messages": messages,
         "knowledge": knowledge,
+        "mcp_servers": mcp_servers,
     }
 
 

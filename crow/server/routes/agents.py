@@ -7,11 +7,8 @@ router = APIRouter()
 @router.get("/agents")
 async def list_agents(request: Request):
     """List all registered agents."""
-    registry = request.app.state.registry
-    return [
-        {"name": a.name, "description": a.description}
-        for a in registry.list()
-    ]
+    db = request.app.state.db
+    return await db.list_agent_defs()
 
 
 @router.get("/agents/{name}/knowledge")
