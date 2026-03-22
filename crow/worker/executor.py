@@ -54,6 +54,10 @@ async def execute_tool(
     from crow.agents.tools import devbot, pilot
 
     headers = {"x-worker-key": worker_key}
+    # Normalize: Claude returns underscore names, our refs use dots
+    prefixes = ("devbot_", "pilot_", "knowledge_")
+    if tool_name.startswith(prefixes):
+        tool_name = tool_name.replace("_", ".", 1)
 
     if tool_name == "delegate_to_agent":
         # Create a child job for the target agent on the server
