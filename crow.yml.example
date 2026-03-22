@@ -1,0 +1,67 @@
+# crow.yml — main configuration file
+# Auto-imported into DB on first startup. Use `crow settings import crow.yml` to reload.
+# Supports ${VAR} syntax for environment variable resolution.
+
+# -- Agents --
+# Each agent has: description, prompt template, built-in tools, MCP servers, knowledge areas.
+# Prompt templates live in crow/agents/prompts/ as Jinja2 files.
+
+agents:
+  pa:
+    description: "Routes inbound messages to specialist agents or handles directly"
+    prompt: pa_system.md.j2
+    tools: [delegate_to_agent, knowledge_search]
+    knowledge_areas: [routing, user-preferences]
+
+  monitor:
+    description: "Watches devbot, pilot, erdo, trading systems. Surfaces problems."
+    prompt: monitor_system.md.j2
+    tools: [knowledge_search, knowledge_write]
+    mcp: [devbot, pilot]                          # gets all tools from these MCP servers
+    knowledge_areas: [monitoring, incidents, system-health]
+
+  planner:
+    description: "Breaks down goals, coordinates work across systems."
+    prompt: planner_system.md.j2
+    tools: [knowledge_search, knowledge_write]
+    mcp: [devbot]
+    knowledge_areas: [planning, goals, coordination]
+
+  reviewer:
+    description: "Reviews PRs, code changes, agent run outputs."
+    prompt: reviewer_system.md.j2
+    tools: [knowledge_search, knowledge_write]
+    mcp: [devbot]
+    knowledge_areas: [review-standards, quality]
+
+# -- MCP Servers --
+# External tool providers. Crow connects as an HTTP client.
+# Agents with `mcp: [name]` automatically get all tools from that server.
+# Add via CLI: crow mcp add devbot http://devbot:8484/mcp
+
+mcp:
+  devbot:
+    url: http://devbot:8484/mcp
+  # pilot:
+  #   url: http://pilot:9721/mcp
+  # slack:
+  #   url: http://slack-mcp.railway.app/mcp
+
+# -- Auth (optional) --
+# Email-based auth with magic codes via Resend.
+# Disabled by default — all endpoints are open.
+
+# auth:
+#   enabled: true
+#   session_secret: ${CROW_SESSION_SECRET}
+#   api_key: ${CROW_API_KEY}
+#   resend:
+#     api_key: ${RESEND_API_KEY}
+#     from: "crow <noreply@erdo.ai>"
+
+# -- Built-in tools reference --
+# These are always available (no MCP needed):
+#   delegate_to_agent  — PA agent delegates to specialist agents
+#   knowledge_search   — Search PARA knowledge base (semantic + keyword)
+#   knowledge_write    — Save a learning to knowledge base
+#   knowledge_archive  — Archive a knowledge entry
