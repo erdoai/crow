@@ -281,22 +281,39 @@ class Database:
     ) -> str:
         knowledge_id = uuid4().hex
         now = datetime.now(UTC)
-        await self._pool.execute(
-            """INSERT INTO knowledge
-               (id, agent_name, category, title, content,
-                source, tags, embedding, created_at, updated_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)""",
-            knowledge_id,
-            agent_name,
-            category,
-            title,
-            content,
-            source,
-            tags or [],
-            str(embedding) if embedding else None,
-            now,
-            now,
-        )
+        if embedding:
+            await self._pool.execute(
+                """INSERT INTO knowledge
+                   (id, agent_name, category, title, content,
+                    source, tags, embedding, created_at, updated_at)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)""",
+                knowledge_id,
+                agent_name,
+                category,
+                title,
+                content,
+                source,
+                tags or [],
+                str(embedding),
+                now,
+                now,
+            )
+        else:
+            await self._pool.execute(
+                """INSERT INTO knowledge
+                   (id, agent_name, category, title, content,
+                    source, tags, created_at, updated_at)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)""",
+                knowledge_id,
+                agent_name,
+                category,
+                title,
+                content,
+                source,
+                tags or [],
+                now,
+                now,
+            )
         return knowledge_id
 
     async def archive_knowledge(self, knowledge_id: str) -> None:

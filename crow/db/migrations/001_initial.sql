@@ -1,5 +1,3 @@
-CREATE EXTENSION IF NOT EXISTS vector;
-
 -- Conversations (thread per user per gateway)
 CREATE TABLE conversations (
     id TEXT PRIMARY KEY,
@@ -47,7 +45,7 @@ CREATE TABLE workers (
     status TEXT NOT NULL DEFAULT 'idle'
 );
 
--- Knowledge (PARA + pgvector)
+-- Knowledge (PARA) — embedding column added by 002 if pgvector available
 CREATE TABLE knowledge (
     id TEXT PRIMARY KEY,
     agent_name TEXT NOT NULL,
@@ -56,17 +54,7 @@ CREATE TABLE knowledge (
     content TEXT NOT NULL,
     source TEXT,
     tags TEXT[] DEFAULT '{}',
-    embedding vector(1536),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX idx_knowledge_agent_cat ON knowledge(agent_name, category);
-CREATE INDEX idx_knowledge_embedding ON knowledge USING ivfflat (embedding vector_cosine_ops)
-    WITH (lists = 100);
-
--- Schema migrations tracking
-CREATE TABLE schema_migrations (
-    version INTEGER PRIMARY KEY,
-    name TEXT NOT NULL,
-    applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);

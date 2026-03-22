@@ -37,10 +37,20 @@ async def run_migrations(pool: asyncpg.Pool) -> None:
 
             logger.info("Applying migration %s", f.name)
             sql = f.read_text()
-            await conn.execute(sql)
-            await conn.execute(
-                "INSERT INTO schema_migrations (version, name) VALUES ($1, $2)",
-                version,
-                f.name,
-            )
-            logger.info("Applied migration %s", f.name)
+            try:
+                await conn.execute(sql)
+                await conn.execute(
+                    "INSERT INTO schema_migrations (version, name) VALUES ($1, $2)",
+                    version,
+                    f.name,
+                )
+                logger.info("Applied migration %s", f.name)
+            except asyncpg.exceptions.FeatureNotSupportedError:
+                logger.warning(
+                    "Skipping migration %s (extension not available)", f.name
+                )
+                await conn.execute(
+                    "INSERT INTO schema_migrations (version, name) VALUES ($1, $2)",
+                    version,
+                    f.name,
+                )
