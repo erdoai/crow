@@ -1,0 +1,41 @@
+"""HTTP API gateway — receives messages via POST /messages."""
+
+import logging
+
+from crow.events.bus import EventBus
+from crow.events.types import MESSAGE_INBOUND, Event
+from crow.gateways.base import Gateway
+
+logger = logging.getLogger(__name__)
+
+
+class APIGateway(Gateway):
+    name = "api"
+
+    def __init__(self):
+        self._bus: EventBus | None = None
+
+    async def start(self, bus: EventBus) -> None:
+        self._bus = bus
+
+    async def stop(self) -> None:
+        pass
+
+    async def send(self, gateway_thread_id: str, text: str) -> None:
+        # API gateway doesn't push responses — callers poll or use SSE
+        pass
+
+    async def handle_inbound(self, gateway_thread_id: str, text: str) -> None:
+        """Called by the FastAPI route."""
+        if not self._bus:
+            return
+        await self._bus.publish(
+            Event(
+                type=MESSAGE_INBOUND,
+                data={
+                    "gateway": "api",
+                    "gateway_thread_id": gateway_thread_id,
+                    "text": text,
+                },
+            )
+        )

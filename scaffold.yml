@@ -1,0 +1,40 @@
+project: crow
+region: us-west1
+
+services:
+  server:
+    provider: railway
+    runtime: python
+    source: .
+    start: "crow serve --port $PORT"
+    health_check: /healthz
+    env:
+      CROW_DATABASE_URL: "${{postgres.url}}"
+      CROW_ANTHROPIC_API_KEY: "${{env.ANTHROPIC_API_KEY}}"
+      CROW_WORKER_API_KEY: "${{env.WORKER_API_KEY}}"
+      CROW_DEVBOT_URL: "${{env.DEVBOT_URL}}"
+      CROW_PILOT_URL: "${{env.PILOT_URL}}"
+      CROW_IMESSAGE_ENABLED: "false"
+
+  worker:
+    provider: railway
+    runtime: python
+    source: .
+    start: "crow worker --url ${{server.url}}"
+    replicas: 1
+    env:
+      CROW_DATABASE_URL: "${{postgres.url}}"
+      CROW_ANTHROPIC_API_KEY: "${{env.ANTHROPIC_API_KEY}}"
+      CROW_WORKER_API_KEY: "${{env.WORKER_API_KEY}}"
+      CROW_DEVBOT_URL: "${{env.DEVBOT_URL}}"
+      CROW_PILOT_URL: "${{env.PILOT_URL}}"
+
+databases:
+  postgres:
+    provider: railway
+    plugin: postgres
+    extensions: [pgvector]
+
+domain:
+  server:
+    host: api.crow.erdo.ai

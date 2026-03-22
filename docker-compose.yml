@@ -1,0 +1,17 @@
+# Optional: local Postgres for offline/testing only.
+# Normal dev uses Railway Postgres (same DB as prod).
+# Set CROW_DATABASE_URL=postgresql://crow:crow@localhost:5433/crow to use this.
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: crow
+      POSTGRES_PASSWORD: crow
+      POSTGRES_DB: crow
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
