@@ -6,7 +6,7 @@ struct Agent: Codable, Identifiable, Hashable {
     let description: String
 }
 
-struct Conversation: Codable, Identifiable {
+struct Conversation: Codable, Identifiable, Hashable {
     let id: String
     let gateway: String
     let gateway_thread_id: String

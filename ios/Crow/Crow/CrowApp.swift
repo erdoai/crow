@@ -6,10 +6,26 @@ struct CrowApp: App {
 
     var body: some Scene {
         WindowGroup {
-            NavigationStack {
-                ServerListView()
+            RootView()
+                .environmentObject(serverStore)
+        }
+    }
+}
+
+/// If there's one server, go straight to it. If multiple, show picker.
+struct RootView: View {
+    @EnvironmentObject var store: ServerStore
+
+    var body: some View {
+        Group {
+            if let server = store.activeServer {
+                MainView(api: CrowAPI(server: server))
+                    .id(server.id) // recreate when switching server
+            } else {
+                NavigationStack {
+                    ServerListView()
+                }
             }
-            .environmentObject(serverStore)
         }
     }
 }

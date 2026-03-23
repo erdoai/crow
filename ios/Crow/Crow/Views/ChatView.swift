@@ -7,52 +7,84 @@ struct ChatView: View {
 
     @State private var messages: [Message] = []
     @State private var input = ""
-    @State private var loading = false
+    @State private var loading = true
+    @State private var sending = false
     @State private var sseClient: SSEClient?
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 12) {
-                        ForEach(messages) { msg in
-                            MessageBubble(message: msg)
-                                .id(msg.id)
-                        }
-                    }
-                    .padding()
-                }
-                .onChange(of: messages.count) {
-                    if let last = messages.last {
-                        withAnimation {
-                            proxy.scrollTo(last.id, anchor: .bottom)
-                        }
-                    }
-                }
-            }
-
+            messageList
             Divider()
-
-            HStack(spacing: 12) {
-                TextField("Message", text: $input, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .lineLimit(1...5)
-                    .onSubmit { send() }
-
-                Button(action: send) {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.title2)
-                }
-                .disabled(input.trimmingCharacters(in: .whitespaces).isEmpty || loading)
-            }
-            .padding()
+            inputBar
         }
-        .navigationTitle("Chat")
+        .navigationTitle(threadId)
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadMessages() }
         .onAppear { connectSSE() }
         .onDisappear { sseClient?.disconnect() }
     }
+
+    // MARK: - Message List
+
+    private var messageList: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                if loading {
+                    ProgressView()
+                        .padding(.top, 40)
+                } else if messages.isEmpty {
+                    Text("Send a message to get started")
+                        .foregroundStyle(.tertiary)
+                        .padding(.top, 40)
+                } else {
+                    LazyVStack(spacing: 2) {
+                        ForEach(messages) { msg in
+                            MessageRow(message: msg)
+                                .id(msg.id)
+                        }
+                    }
+                    .padding(.vertical, 12)
+                }
+            }
+            .onChange(of: messages.count) {
+                if let last = messages.last {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo(last.id, anchor: .bottom)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Input Bar
+
+    private var inputBar: some View {
+        HStack(alignment: .bottom, spacing: 10) {
+            TextField("Message", text: $input, axis: .vertical)
+                .textFieldStyle(.plain)
+                .lineLimit(1...8)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color(.systemGray6))
+                .clipShape(RoundedRectangle(cornerRadius: 20))
+                .onSubmit { send() }
+
+            Button(action: send) {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 30))
+                    .foregroundStyle(canSend ? Color.accentColor : Color(.systemGray4))
+            }
+            .disabled(!canSend)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    private var canSend: Bool {
+        !input.trimmingCharacters(in: .whitespaces).isEmpty && !sending
+    }
+
+    // MARK: - Actions
 
     private func loadMessages() async {
         do {
@@ -60,15 +92,16 @@ struct ChatView: View {
         } catch {
             // TODO: show error
         }
+        loading = false
     }
 
     private func send() {
         let text = input.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return }
         input = ""
-        loading = true
+        sending = true
 
-        // Optimistic local insert
+        // Optimistic insert
         let local = Message(
             id: UUID().uuidString,
             conversation_id: conversationId,
@@ -85,7 +118,7 @@ struct ChatView: View {
             } catch {
                 // TODO: show error
             }
-            loading = false
+            sending = false
         }
     }
 
@@ -117,26 +150,51 @@ private struct SSEPayload: Decodable {
     let timestamp: String
 }
 
-struct MessageBubble: View {
+// MARK: - Message Row
+
+struct MessageRow: View {
     let message: Message
 
     var body: some View {
-        HStack {
-            if message.isUser { Spacer(minLength: 60) }
-            VStack(alignment: message.isUser ? .trailing : .leading, spacing: 4) {
-                if let agent = message.agent_name {
-                    Text(agent)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                Text(message.content)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(message.isUser ? Color.accentColor : Color(.systemGray5))
-                    .foregroundStyle(message.isUser ? .white : .primary)
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
+        HStack(alignment: .top, spacing: 0) {
+            if message.isUser {
+                Spacer(minLength: 48)
+                userBubble
+            } else {
+                assistantMessage
+                Spacer(minLength: 48)
             }
-            if !message.isUser { Spacer(minLength: 60) }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 2)
+    }
+
+    private var userBubble: some View {
+        Text(message.content)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Color.accentColor)
+            .foregroundStyle(.white)
+            .clipShape(RoundedRectangle(cornerRadius: 18))
+    }
+
+    private var assistantMessage: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let agent = message.agent_name {
+                HStack(spacing: 4) {
+                    Image(systemName: "cpu")
+                        .font(.caption2)
+                    Text(agent)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                }
+                .foregroundStyle(.secondary)
+            }
+            Text(message.content)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Color(.systemGray6))
+                .clipShape(RoundedRectangle(cornerRadius: 18))
         }
     }
 }

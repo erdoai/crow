@@ -7,9 +7,9 @@ struct ServerListView: View {
     var body: some View {
         List {
             ForEach(store.servers) { server in
-                NavigationLink(
-                    destination: ConversationListView(api: CrowAPI(server: server))
-                ) {
+                Button {
+                    store.setActive(server)
+                } label: {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(server.name)
                             .font(.headline)
