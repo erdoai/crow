@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { fetchJSON, type DashboardData } from '../api'
+import { fetchJSON, type Conversation, type DashboardData } from '../api'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { LogOut, Key, Brain, MessageSquare, Cpu } from 'lucide-react'
 
 export default function DashboardPage() {
   const navigate = useNavigate()
@@ -21,7 +26,6 @@ export default function DashboardPage() {
     })
     setNewKey(res.key)
     setKeyName('')
-    // Refresh dashboard data to show the new key in the list
     fetchJSON<DashboardData>('/api/dashboard').then(setData)
   }
 
@@ -35,14 +39,21 @@ export default function DashboardPage() {
     const threadId = `chat-${agentName}-${Date.now()}`
     await fetchJSON('/messages', {
       method: 'POST',
-      body: JSON.stringify({ text: "Hi, I'd like to chat with you.", thread_id: threadId, agent: agentName }),
+      body: JSON.stringify({ text: `Hi, I'd like to chat with you.`, thread_id: threadId, agent: agentName }),
     })
-    // Poll for conversation to appear then navigate
-    setTimeout(async () => {
-      const convs = await fetchJSON<Array<{ id: string; gateway_thread_id: string }>>('/conversations')
+    const poll = async (attempts = 0): Promise<void> => {
+      const convs = await fetchJSON<Conversation[]>('/conversations')
       const conv = convs.find(c => c.gateway_thread_id === threadId)
-      navigate(conv ? `/chat/${conv.id}` : '/chat')
-    }, 1000)
+      if (conv) {
+        navigate(`/chat/${conv.id}`)
+      } else if (attempts < 5) {
+        await new Promise(r => setTimeout(r, 500))
+        return poll(attempts + 1)
+      } else {
+        navigate('/chat')
+      }
+    }
+    await poll()
   }
 
   async function logout() {
@@ -53,116 +64,122 @@ export default function DashboardPage() {
   if (!data) return null
 
   return (
-    <div className="dashboard">
-      <header className="header">
-        <div className="header-left">
-          <h1 className="header-logo">crow</h1>
-        </div>
-        <div className="header-right">
-          <span className="greeting">hi, {data.display_name}</span>
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="bg-primary text-primary-foreground px-6 py-4 flex items-center justify-between">
+        <h1 className="text-xl font-bold tracking-tight">crow</h1>
+        <div className="flex items-center gap-4">
+          <span className="text-sm opacity-90">hi, {data.display_name}</span>
+          <Button variant="ghost" size="sm" onClick={() => navigate('/chat')} className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10">
+            <MessageSquare className="h-4 w-4 mr-1" /> chat
+          </Button>
           {data.auth_enabled && (
-            <button className="btn btn-ghost btn-sm" onClick={logout}>sign out</button>
+            <Button variant="ghost" size="sm" onClick={logout} className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10">
+              <LogOut className="h-4 w-4" />
+            </Button>
           )}
         </div>
       </header>
 
-      <main className="main">
+      <main className="max-w-3xl mx-auto p-6 flex flex-col gap-8">
         {/* Agents */}
-        <section className="section">
-          <h2 className="section-title">agents</h2>
-          <div className="card-grid">
+        <section>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+            <Cpu className="h-3.5 w-3.5" /> agents
+          </h2>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
             {data.agents.map(agent => (
-              <a
+              <Card
                 key={agent.name}
-                href="/chat"
-                className="card card-link"
-                onClick={e => { e.preventDefault(); startChatWithAgent(agent.name) }}
+                className="cursor-pointer hover:border-primary/30 transition-colors"
+                onClick={() => startChatWithAgent(agent.name)}
               >
-                <h3 className="card-title">{agent.name}</h3>
-                <p className="card-desc">{agent.description}</p>
-              </a>
+                <CardHeader className="p-4">
+                  <CardTitle className="text-base text-primary">{agent.name}</CardTitle>
+                  <CardDescription>{agent.description}</CardDescription>
+                </CardHeader>
+              </Card>
             ))}
-            {data.agents.length === 0 && <p className="empty">no agents configured</p>}
+            {data.agents.length === 0 && <p className="text-sm text-muted-foreground">no agents configured</p>}
           </div>
         </section>
 
         {/* API Keys */}
-        <section className="section">
-          <h2 className="section-title">API keys</h2>
+        <section>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+            <Key className="h-3.5 w-3.5" /> API keys
+          </h2>
           {data.api_keys.length > 0 && (
-            <div className="list">
+            <div className="bg-card border rounded-lg mb-3 divide-y">
               {data.api_keys.map(key => (
-                <div key={key.id} className="list-item">
-                  <div>
-                    <span className="key-name">{key.name}</span>
-                    <span className="mono muted">{key.key_prefix}...</span>
+                <div key={key.id} className="flex items-center justify-between px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm">{key.name}</span>
+                    <code className="text-xs text-muted-foreground">{key.key_prefix}...</code>
                   </div>
-                  <button className="btn btn-ghost btn-sm" onClick={() => deleteApiKey(key.id)}>revoke</button>
+                  <Button variant="ghost" size="sm" onClick={() => deleteApiKey(key.id)}>revoke</Button>
                 </div>
               ))}
             </div>
           )}
           {newKey && (
-            <div className="key-result">
+            <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 mb-3 font-mono text-xs break-all">
               copy this key now (it won't be shown again): {newKey}
             </div>
           )}
-          <form className="inline-form" onSubmit={createApiKey}>
-            <input
-              type="text"
-              className="input input-sm"
-              placeholder="key name"
-              value={keyName}
-              onChange={e => setKeyName(e.target.value)}
-            />
-            <button type="submit" className="btn btn-secondary btn-sm">create key</button>
+          <form className="flex gap-2 items-center" onSubmit={createApiKey}>
+            <Input placeholder="key name" value={keyName} onChange={e => setKeyName(e.target.value)} className="max-w-xs" />
+            <Button type="submit" variant="secondary" size="sm">create key</Button>
           </form>
         </section>
 
         {/* Knowledge */}
-        <section className="section">
-          <h2 className="section-title">knowledge</h2>
+        <section>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+            <Brain className="h-3.5 w-3.5" /> knowledge
+          </h2>
           {data.knowledge.length > 0 ? (
-            <div className="list">
+            <div className="bg-card border rounded-lg divide-y">
               {data.knowledge.map(k => (
-                <div key={k.id} className="list-item">
-                  <div>
-                    <span className="badge">{k.category}</span>
-                    <span>{k.title}</span>
+                <div key={k.id} className="flex items-center justify-between px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary">{k.category}</Badge>
+                    <span className="text-sm">{k.title}</span>
                   </div>
-                  <span className="muted">{k.agent_name}</span>
+                  <span className="text-xs text-muted-foreground">{k.agent_name}</span>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="empty">no knowledge entries yet</p>
+            <p className="text-sm text-muted-foreground">no knowledge entries yet</p>
           )}
         </section>
 
         {/* Recent Conversations */}
-        <section className="section">
-          <h2 className="section-title">recent conversations</h2>
+        <section>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
+            <MessageSquare className="h-3.5 w-3.5" /> recent conversations
+          </h2>
           {data.conversations.length > 0 ? (
-            <div className="list">
+            <div className="bg-card border rounded-lg divide-y">
               {data.conversations.map(c => (
-                <a
+                <button
                   key={c.id}
-                  href={`/chat/${c.id}`}
-                  className="list-item list-item-link"
-                  onClick={e => { e.preventDefault(); navigate(`/chat/${c.id}`) }}
+                  className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-accent/50 transition-colors"
+                  onClick={() => navigate(`/chat/${c.id}`)}
                 >
-                  <div>
-                    <span className="badge">{c.gateway}</span>
-                    <span className="mono">{c.gateway_thread_id}</span>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline">{c.gateway}</Badge>
+                    <code className="text-sm">{c.gateway_thread_id}</code>
                   </div>
-                  <span className="muted">
+                  <span className="text-xs text-muted-foreground">
                     {c.updated_at ? new Date(c.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
                   </span>
-                </a>
+                </button>
               ))}
             </div>
           ) : (
-            <p className="empty">no conversations yet</p>
+            <p className="text-sm text-muted-foreground">no conversations yet</p>
           )}
         </section>
       </main>

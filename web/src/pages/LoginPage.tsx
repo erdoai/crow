@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react'
 import { fetchJSON } from '../api'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 export default function LoginPage({ onSuccess }: { onSuccess: () => void }) {
   const [step, setStep] = useState<'email' | 'code'>('email')
@@ -74,30 +76,29 @@ export default function LoginPage({ onSuccess }: { onSuccess: () => void }) {
   }
 
   return (
-    <div className="auth-page">
-      <div className="auth-card">
-        <h1 className="auth-logo">crow</h1>
-        <p className="auth-subtitle">sign in to continue</p>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-950 via-purple-800 to-purple-600 p-4">
+      <div className="bg-card rounded-xl p-8 w-full max-w-sm shadow-2xl flex flex-col gap-4">
+        <h1 className="text-3xl font-bold text-primary tracking-tight">crow</h1>
+        <p className="text-sm text-muted-foreground">sign in to continue</p>
 
         {step === 'email' ? (
-          <form onSubmit={sendCode}>
-            <input
+          <form onSubmit={sendCode} className="flex flex-col gap-3">
+            <Input
               type="email"
-              className="input"
               placeholder="your email"
               autoComplete="email"
               autoFocus
               value={email}
               onChange={e => setEmail(e.target.value)}
             />
-            <button type="submit" className="btn btn-primary">send code</button>
+            <Button type="submit" className="w-full">send code</Button>
           </form>
         ) : (
-          <form onSubmit={e => { e.preventDefault(); verify() }}>
-            <p className="code-label">
-              enter the 6-digit code sent to <span>{email}</span>
+          <form onSubmit={e => { e.preventDefault(); verify() }} className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground text-center">
+              enter the 6-digit code sent to <span className="font-medium text-foreground">{email}</span>
             </p>
-            <div className="otp-inputs">
+            <div className="flex gap-2 justify-center">
               {digits.map((d, i) => (
                 <input
                   key={i}
@@ -105,7 +106,7 @@ export default function LoginPage({ onSuccess }: { onSuccess: () => void }) {
                   type="text"
                   maxLength={1}
                   inputMode="numeric"
-                  className="otp-digit"
+                  className="w-11 h-13 text-center text-xl font-semibold font-mono border border-input rounded-lg outline-none focus:border-primary focus:ring-2 focus:ring-ring/30"
                   value={d}
                   onChange={e => handleDigitInput(i, e.target.value)}
                   onKeyDown={e => handleDigitKeyDown(i, e)}
@@ -113,19 +114,20 @@ export default function LoginPage({ onSuccess }: { onSuccess: () => void }) {
                 />
               ))}
             </div>
-            <button type="submit" className="btn btn-primary">verify</button>
-            <button
+            <Button type="submit" className="w-full">verify</Button>
+            <Button
               type="button"
-              className="btn btn-ghost"
+              variant="ghost"
+              size="sm"
               onClick={() => { setStep('email'); setDigits(['', '', '', '', '', '']); setError('') }}
             >
               use a different email
-            </button>
+            </Button>
           </form>
         )}
 
-        {error && <p className="error">{error}</p>}
-        {status && <p className="status">{status}</p>}
+        {error && <p className="text-sm text-destructive text-center">{error}</p>}
+        {status && <p className="text-sm text-primary text-center">{status}</p>}
       </div>
     </div>
   )
