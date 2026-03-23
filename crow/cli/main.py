@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 
 import typer
 import uvicorn
@@ -30,7 +31,10 @@ DEFAULT_URL = "http://localhost:8100"
 @app.command()
 def serve(
     host: str = typer.Option("0.0.0.0", help="Host to bind to"),
-    port: int = typer.Option(8100, help="Port to bind to"),
+    port: int = typer.Option(
+        int(os.environ.get("PORT", os.environ.get("CROW_PORT", "8100"))),
+        help="Port to bind to (defaults to $PORT or $CROW_PORT or 8100)",
+    ),
 ):
     """Start the crow server."""
     logging.basicConfig(level=logging.INFO, format=LOG_FMT)
