@@ -12,7 +12,6 @@ from crow.config.settings import Settings
 from crow.db.database import Database
 from crow.events.bus import EventBus
 from crow.gateways.api.gateway import APIGateway
-from crow.gateways.imessage.gateway import IMessageGateway
 from crow.router.router import Router
 from crow.server.routes import (
     agents,
@@ -60,12 +59,6 @@ async def lifespan(app: FastAPI):
     await api_gw.start(bus)
     gateways.append(api_gw)
     app.state.api_gateway = api_gw
-
-    if settings.imessage_enabled:
-        imsg_gw = IMessageGateway(settings, db)
-        await imsg_gw.start(bus)
-        gateways.append(imsg_gw)
-        logger.info("iMessage gateway enabled")
 
     logger.info("crow server started on %s:%d", settings.host, settings.port)
 

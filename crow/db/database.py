@@ -561,38 +561,3 @@ class Database:
             key_id,
         )
 
-    # -- Phone Links --
-
-    async def link_phone(self, user_id: str, phone_number: str) -> str:
-        link_id = uuid4().hex
-        await self._pool.execute(
-            """INSERT INTO phone_links (id, user_id, phone_number, created_at)
-               VALUES ($1, $2, $3, $4)""",
-            link_id,
-            user_id,
-            phone_number,
-            datetime.now(UTC),
-        )
-        return link_id
-
-    async def unlink_phone(self, link_id: str, user_id: str) -> bool:
-        result = await self._pool.execute(
-            "DELETE FROM phone_links WHERE id = $1 AND user_id = $2", link_id, user_id
-        )
-        return result.split()[-1] != "0"
-
-    async def get_user_by_phone(self, phone_number: str) -> dict | None:
-        row = await self._pool.fetchrow(
-            """SELECT u.* FROM users u
-               JOIN phone_links pl ON pl.user_id = u.id
-               WHERE pl.phone_number = $1""",
-            phone_number,
-        )
-        return dict(row) if row else None
-
-    async def list_phone_links(self, user_id: str) -> list[dict]:
-        rows = await self._pool.fetch(
-            "SELECT * FROM phone_links WHERE user_id = $1 ORDER BY created_at DESC",
-            user_id,
-        )
-        return [dict(r) for r in rows]

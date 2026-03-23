@@ -16,11 +16,6 @@ class Settings(BaseSettings):
     pilot_url: str = "http://localhost:9721"
     erdo_url: str = ""
 
-    # iMessage gateway
-    imessage_enabled: bool = False
-    imessage_chat_db: str = "~/Library/Messages/chat.db"
-    imessage_allowed_numbers: list[str] = []
-
     # Server
     host: str = "0.0.0.0"
     port: int = 8100

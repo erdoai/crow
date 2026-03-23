@@ -33,27 +33,6 @@
             </div>
         </section>
 
-        {% if auth_enabled %}
-        <!-- iMessage -->
-        <section class="section">
-            <h2 class="section-title">iMessage</h2>
-            {% if phone_links %}
-            <div class="list">
-                {% for link in phone_links %}
-                <div class="list-item">
-                    <span class="mono">{{ link.phone_number }}</span>
-                    <button class="btn btn-ghost btn-sm" onclick="unlinkPhone('{{ link.id }}')">remove</button>
-                </div>
-                {% endfor %}
-            </div>
-            {% endif %}
-            <div class="inline-form">
-                <input type="tel" id="phone-input" class="input input-sm" placeholder="+1234567890">
-                <button class="btn btn-secondary btn-sm" onclick="linkPhone()">link number</button>
-            </div>
-        </section>
-        {% endif %}
-
         <!-- API Keys -->
         <section class="section">
             <h2 class="section-title">API keys</h2>

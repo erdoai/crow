@@ -81,6 +81,6 @@ When enabled: email OTP sign-in → onboarding ("what should I call you?") → d
 - Agents defined in `crow.yml` and stored in DB (`agent_defs` table). Prompt template + tools + MCP servers + knowledge areas.
 - Knowledge stored as markdown in Postgres with pgvector embeddings (PARA: Projects/Areas/Resources/Archives), scoped per-user when auth enabled.
 - Event-driven: components communicate via async event bus, not direct calls.
-- iMessage gateway resolves phone numbers to users via `phone_links` table, falls back to allowlist.
+- iOS app gateway for inbound messages.
 - Web dashboard served from FastAPI (Jinja2 templates + vanilla CSS/JS). Purple theme.
 - API keys generated from dashboard, bearer token auth for programmatic access.

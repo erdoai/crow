@@ -1,4 +1,4 @@
-"""Dashboard routes: login, onboarding, main dashboard, phone linking, API keys."""
+"""Dashboard routes: login, onboarding, main dashboard, API keys."""
 
 from pathlib import Path
 
@@ -92,12 +92,6 @@ async def dashboard_page(request: Request):
     api_keys = await db.list_api_keys(
         user_id=user["id"] if auth_enabled and user["id"] != "default" else None
     )
-    phone_links = (
-        await db.list_phone_links(user["id"])
-        if auth_enabled and user["id"] != "default"
-        else []
-    )
-
     display_name = user.get("display_name") or "User"
 
     return templates.TemplateResponse(
@@ -111,46 +105,9 @@ async def dashboard_page(request: Request):
             "conversations": conversations,
             "knowledge": knowledge,
             "api_keys": api_keys,
-            "phone_links": phone_links,
+
         },
     )
-
-
-class LinkPhoneRequest(BaseModel):
-    phone_number: str
-
-
-@router.post("/dashboard/link-phone")
-async def link_phone(form: LinkPhoneRequest, request: Request):
-    """Link a phone number to the current user."""
-    user = await get_current_user(request)
-    if not user or user["id"] == "default":
-        raise HTTPException(status_code=401)
-
-    db = request.app.state.db
-    phone = form.phone_number.strip()
-    if not phone.startswith("+"):
-        raise HTTPException(status_code=400, detail="Phone number must start with +")
-
-    try:
-        link_id = await db.link_phone(user["id"], phone)
-    except Exception:
-        raise HTTPException(status_code=409, detail="Phone number already linked")
-    return {"status": "linked", "id": link_id}
-
-
-@router.delete("/dashboard/unlink-phone/{link_id}")
-async def unlink_phone(link_id: str, request: Request):
-    """Remove a phone link."""
-    user = await get_current_user(request)
-    if not user or user["id"] == "default":
-        raise HTTPException(status_code=401)
-
-    db = request.app.state.db
-    deleted = await db.unlink_phone(link_id, user["id"])
-    if not deleted:
-        raise HTTPException(status_code=404)
-    return {"status": "unlinked"}
 
 
 class CreateApiKeyRequest(BaseModel):
