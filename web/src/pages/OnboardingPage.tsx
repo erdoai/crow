@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { fetchJSON } from '../api'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 export default function OnboardingPage({ onSuccess }: { onSuccess: () => void }) {
   const [name, setName] = useState('')
@@ -22,26 +24,25 @@ export default function OnboardingPage({ onSuccess }: { onSuccess: () => void })
   }
 
   return (
-    <div className="auth-page">
-      <div className="auth-card">
-        <h1 className="auth-logo">crow</h1>
-        <p className="auth-subtitle">welcome! one quick thing&hellip;</p>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-950 via-purple-800 to-purple-600 p-4">
+      <div className="bg-card rounded-xl p-8 w-full max-w-sm shadow-2xl flex flex-col gap-4">
+        <h1 className="text-3xl font-bold text-primary tracking-tight">crow</h1>
+        <p className="text-sm text-muted-foreground">welcome! one quick thing&hellip;</p>
 
-        <form onSubmit={submit}>
-          <label className="input-label" htmlFor="name-input">what should I call you?</label>
-          <input
+        <form onSubmit={submit} className="flex flex-col gap-3">
+          <label className="text-sm font-medium text-foreground" htmlFor="name-input">what should I call you?</label>
+          <Input
             type="text"
             id="name-input"
-            className="input"
             placeholder="your name"
             autoFocus
             value={name}
             onChange={e => setName(e.target.value)}
           />
-          <button type="submit" className="btn btn-primary">get started</button>
+          <Button type="submit" className="w-full">get started</Button>
         </form>
 
-        {error && <p className="error">{error}</p>}
+        {error && <p className="text-sm text-destructive text-center">{error}</p>}
       </div>
     </div>
   )

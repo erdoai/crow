@@ -31,7 +31,9 @@ export default function App() {
           : <LoginPage onSuccess={refetch} />
       } />
       <Route path="/onboarding" element={
-        <OnboardingPage onSuccess={refetch} />
+        user?.display_name
+          ? <Navigate to="/dashboard" replace />
+          : <OnboardingPage onSuccess={refetch} />
       } />
       <Route path="/dashboard" element={
         <RequireAuth user={user} authEnabled={authEnabled}>
