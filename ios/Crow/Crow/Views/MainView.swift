@@ -50,6 +50,7 @@ struct ChatsTab: View {
     @State private var showNewChat = false
     @State private var showServerPicker = false
     @State private var loading = true
+    @State private var errorMessage: String?
 
     var body: some View {
         NavigationSplitView {
@@ -100,6 +101,14 @@ struct ChatsTab: View {
                         .padding(.vertical, 8)
                     }
                     .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
+                }
+            }
+
+            if let errorMessage {
+                Section {
+                    Label(errorMessage, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.red)
                 }
             }
 
@@ -159,13 +168,14 @@ struct ChatsTab: View {
     }
 
     private func load() async {
+        errorMessage = nil
         do {
             async let c = api.listConversations()
             async let a = api.listAgents()
             conversations = try await c
             agents = try await a
         } catch {
-            // TODO: error handling
+            errorMessage = "Cannot connect: \(error.localizedDescription)"
         }
         loading = false
     }
@@ -348,109 +358,99 @@ struct NewChatSheet: View {
     @State private var text = ""
     @State private var selectedAgent: Agent?
     @State private var sending = false
+    @State private var error: String?
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Agent picker
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        agentButton(name: "Auto", icon: "sparkles", agent: nil)
-                        ForEach(agents) { agent in
-                            agentButton(
-                                name: agent.name,
-                                icon: iconForAgent(agent.name),
-                                agent: agent
-                            )
+                // To: row — like iMessage
+                HStack(spacing: 8) {
+                    Text("To:")
+                        .foregroundStyle(.secondary)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            toChip(name: "Auto", agent: nil)
+                            ForEach(agents) { agent in
+                                toChip(name: agent.name, agent: agent)
+                            }
                         }
                     }
-                    .padding()
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
 
                 Divider()
 
-                // Message input
-                VStack(spacing: 12) {
-                    TextEditor(text: $text)
-                        .frame(minHeight: 100)
-                        .overlay(alignment: .topLeading) {
-                            if text.isEmpty {
-                                Text("What do you need?")
-                                    .foregroundStyle(.tertiary)
-                                    .padding(.top, 8)
-                                    .padding(.leading, 4)
-                                    .allowsHitTesting(false)
-                            }
-                        }
-                        .scrollContentBackground(.hidden)
-
-                    if let agent = selectedAgent {
-                        Text("Sending to **\(agent.name)**: \(agent.description)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-                .padding()
-
+                // Empty conversation area
                 Spacer()
+
+                if let error {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 8)
+                }
+
+                // iMessage-style input bar at bottom
+                Divider()
+                HStack(alignment: .bottom, spacing: 10) {
+                    TextField("iMessage", text: $text, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .lineLimit(1...8)
+                        .submitLabel(.send)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color(.systemGray6))
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
+                        .onSubmit { Task { await send() } }
+
+                    Button { Task { await send() } } label: {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 30))
+                            .foregroundStyle(canSend ? Color.accentColor : Color(.systemGray4))
+                    }
+                    .disabled(!canSend)
+                    .keyboardShortcut(.return, modifiers: .command)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
             }
-            .navigationTitle("New Chat")
+            .navigationTitle("New Message")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button {
-                        Task { await send() }
-                    } label: {
-                        if sending {
-                            ProgressView()
-                        } else {
-                            Image(systemName: "arrow.up.circle.fill")
-                                .font(.title2)
-                        }
-                    }
-                    .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty || sending)
-                }
             }
         }
     }
 
-    private func agentButton(name: String, icon: String, agent: Agent?) -> some View {
+    private var canSend: Bool {
+        !text.trimmingCharacters(in: .whitespaces).isEmpty && !sending
+    }
+
+    private func toChip(name: String, agent: Agent?) -> some View {
         let isSelected = selectedAgent?.id == agent?.id
         return Button {
             selectedAgent = agent
         } label: {
-            VStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.title3)
-                    .frame(width: 44, height: 44)
-                    .background(isSelected ? Color.accentColor : Color.accentColor.opacity(0.1))
-                    .foregroundStyle(isSelected ? .white : .primary)
-                    .clipShape(Circle())
-                Text(name)
-                    .font(.caption)
-                    .foregroundStyle(isSelected ? .primary : .secondary)
-            }
+            Text(name)
+                .font(.subheadline)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(isSelected ? Color.accentColor : Color(.systemGray5))
+                .foregroundStyle(isSelected ? .white : .primary)
+                .clipShape(Capsule())
         }
         .buttonStyle(.plain)
     }
 
-    private func iconForAgent(_ name: String) -> String {
-        switch name {
-        case "pa": return "person.crop.circle"
-        case "devbot": return "chevron.left.forwardslash.chevron.right"
-        case "pilot": return "airplane"
-        default: return "cpu"
-        }
-    }
-
     private func send() async {
         let trimmed = text.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty, !sending else { return }
         sending = true
+        error = nil
 
         do {
             let result = try await api.sendMessage(
@@ -463,7 +463,7 @@ struct NewChatSheet: View {
             }
             dismiss()
         } catch {
-            // TODO: show error
+            self.error = "Failed to send: \(error.localizedDescription)"
         }
         sending = false
     }

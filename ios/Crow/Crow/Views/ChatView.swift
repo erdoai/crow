@@ -83,11 +83,6 @@ struct ChatView: View {
                 .background(Color(.systemGray6))
                 .clipShape(RoundedRectangle(cornerRadius: 20))
                 .onSubmit { send() }
-                .onKeyPress(.return) {
-                    // Hardware keyboard: Return sends, Shift+Return inserts newline
-                    send()
-                    return .handled
-                }
 
             Button(action: send) {
                 Image(systemName: "arrow.up.circle.fill")
@@ -95,6 +90,7 @@ struct ChatView: View {
                     .foregroundStyle(canSend ? Color.accentColor : Color(.systemGray4))
             }
             .disabled(!canSend)
+            .keyboardShortcut(.return, modifiers: .command)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
