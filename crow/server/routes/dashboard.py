@@ -25,8 +25,11 @@ async def onboarding_submit(form: "OnboardingForm", request: Request):
 
 @router.get("/api/dashboard/views")
 async def list_views(request: Request):
-    """Return configured custom dashboard views (file-based + DB-stored)."""
-    # File-based views from crow.yml
+    """Return dashboard views visible to the current user (own + instance-level)."""
+    user = await get_current_user(request)
+    user_id = user["id"] if user and user["id"] != "default" else None
+
+    # File-based views from crow.yml (always instance-level)
     file_views = getattr(request.app.state, "dashboard_config", {}).get("views", {})
     result = [
         {
@@ -34,19 +37,22 @@ async def list_views(request: Request):
             "label": cfg.get("label", name),
             "url": f"/dashboard/custom/{name}/",
             "source": "file",
+            "scope": "instance",
         }
         for name, cfg in file_views.items()
     ]
 
-    # DB-stored views
+    # DB-stored views (instance-level + user's own)
     db = request.app.state.db
-    db_views = await db.list_dashboard_views()
+    db_views = await db.list_dashboard_views(user_id=user_id)
     for v in db_views:
         result.append({
             "name": v["name"],
             "label": v["label"],
             "url": f"/dashboard/custom/{v['name']}/",
             "source": "db",
+            "scope": "user" if v.get("user_id") else "instance",
+            "share_token": v.get("share_token"),
         })
 
     return result
@@ -54,7 +60,12 @@ async def list_views(request: Request):
 
 @router.post("/api/dashboard/views")
 async def upload_view(request: Request):
-    """Upload a dashboard view. Accepts multipart form or JSON."""
+    """Upload a dashboard view. Scoped to the authenticated user (or instance-level if static API key)."""
+    user = await get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401)
+    user_id = user["id"] if user["id"] != "default" else None
+
     db = request.app.state.db
     content_type = request.headers.get("content-type", "")
 
@@ -72,8 +83,8 @@ async def upload_view(request: Request):
                 content = await upload.read()
                 files[upload.filename] = base64.b64encode(content).decode()
 
-        await db.upsert_dashboard_view(str(name), str(label), files)
-        return {"status": "ok", "name": name, "files": len(files)}
+        await db.upsert_dashboard_view(str(name), str(label), files, user_id=user_id)
+        return {"status": "ok", "name": name, "files": len(files), "scope": "user" if user_id else "instance"}
 
     else:
         body = await request.json()
@@ -83,15 +94,20 @@ async def upload_view(request: Request):
         if not name:
             raise HTTPException(status_code=400, detail="name is required")
 
-        await db.upsert_dashboard_view(name, label, files)
-        return {"status": "ok", "name": name, "files": len(files)}
+        await db.upsert_dashboard_view(name, label, files, user_id=user_id)
+        return {"status": "ok", "name": name, "files": len(files), "scope": "user" if user_id else "instance"}
 
 
 @router.delete("/api/dashboard/views/{name}")
 async def delete_view(name: str, request: Request):
-    """Delete a DB-stored dashboard view."""
+    """Delete a dashboard view owned by the current user."""
+    user = await get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401)
+    user_id = user["id"] if user["id"] != "default" else None
+
     db = request.app.state.db
-    deleted = await db.delete_dashboard_view(name)
+    deleted = await db.delete_dashboard_view(name, user_id=user_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="View not found")
     return {"status": "deleted"}

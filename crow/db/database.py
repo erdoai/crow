@@ -660,38 +660,77 @@ class Database:
     # -- Dashboard Views --
 
     async def upsert_dashboard_view(
-        self, name: str, label: str, files: dict[str, str]
+        self, name: str, label: str, files: dict[str, str],
+        user_id: str | None = None,
     ) -> None:
         import json
 
         files_json = json.dumps(files)
+        now = datetime.now(UTC)
+        # Delete existing then insert (handles NULL user_id correctly)
+        if user_id:
+            await self._pool.execute(
+                "DELETE FROM dashboard_views WHERE name = $1 AND user_id = $2", name, user_id
+            )
+        else:
+            await self._pool.execute(
+                "DELETE FROM dashboard_views WHERE name = $1 AND user_id IS NULL", name
+            )
         await self._pool.execute(
-            """INSERT INTO dashboard_views (name, label, files, created_at, updated_at)
-               VALUES ($1, $2, $3::jsonb, $4, $5)
-               ON CONFLICT (name) DO UPDATE SET
-                 label = $2, files = $3::jsonb, updated_at = $5""",
-            name,
-            label,
-            files_json,
-            datetime.now(UTC),
-            datetime.now(UTC),
+            """INSERT INTO dashboard_views (name, label, files, user_id, created_at, updated_at)
+               VALUES ($1, $2, $3::jsonb, $4, $5, $6)""",
+            name, label, files_json, user_id, now, now,
         )
 
-    async def get_dashboard_view(self, name: str) -> dict | None:
+    async def get_dashboard_view(self, name: str, user_id: str | None = None) -> dict | None:
+        """Get a dashboard view. Returns user's own view first, then instance-level."""
+        if user_id:
+            row = await self._pool.fetchrow(
+                "SELECT * FROM dashboard_views WHERE name = $1 AND user_id = $2", name, user_id
+            )
+            if row:
+                return dict(row)
+        # Fall back to instance-level
         row = await self._pool.fetchrow(
-            "SELECT * FROM dashboard_views WHERE name = $1", name
+            "SELECT * FROM dashboard_views WHERE name = $1 AND user_id IS NULL", name
         )
         return dict(row) if row else None
 
-    async def list_dashboard_views(self) -> list[dict]:
+    async def get_dashboard_view_by_token(self, token: str) -> dict | None:
+        row = await self._pool.fetchrow(
+            "SELECT * FROM dashboard_views WHERE share_token = $1", token
+        )
+        return dict(row) if row else None
+
+    async def list_dashboard_views(self, user_id: str | None = None) -> list[dict]:
+        """List views visible to a user: their own + instance-level."""
         rows = await self._pool.fetch(
-            "SELECT name, label, created_at, updated_at FROM dashboard_views ORDER BY name"
+            "SELECT name, label, user_id, share_token, created_at, updated_at "
+            "FROM dashboard_views WHERE user_id IS NULL OR user_id = $1 ORDER BY name",
+            user_id,
         )
         return [dict(r) for r in rows]
 
-    async def delete_dashboard_view(self, name: str) -> bool:
-        result = await self._pool.execute(
-            "DELETE FROM dashboard_views WHERE name = $1", name
-        )
+    async def delete_dashboard_view(self, name: str, user_id: str | None = None) -> bool:
+        if user_id:
+            result = await self._pool.execute(
+                "DELETE FROM dashboard_views WHERE name = $1 AND user_id = $2", name, user_id
+            )
+        else:
+            result = await self._pool.execute(
+                "DELETE FROM dashboard_views WHERE name = $1 AND user_id IS NULL", name
+            )
         return result.split()[-1] != "0"
+
+    async def set_dashboard_share_token(self, name: str, user_id: str, token: str) -> None:
+        await self._pool.execute(
+            "UPDATE dashboard_views SET share_token = $1 WHERE name = $2 AND user_id = $3",
+            token, name, user_id,
+        )
+
+    async def remove_dashboard_share_token(self, name: str, user_id: str) -> None:
+        await self._pool.execute(
+            "UPDATE dashboard_views SET share_token = NULL WHERE name = $1 AND user_id = $2",
+            name, user_id,
+        )
 

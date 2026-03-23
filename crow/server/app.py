@@ -126,9 +126,19 @@ def create_app() -> FastAPI:
     # DB-stored custom dashboard views — serves files from the database
     @app.get("/dashboard/custom/{name}/{path:path}")
     async def serve_db_dashboard(name: str, path: str, request: Request):
-        """Serve dashboard files from DB. Falls back to file-based mounts."""
+        """Serve dashboard files from DB. Checks user's own views + instance-level + share tokens."""
+        from crow.auth.dependencies import get_current_user
+
         db = request.app.state.db
-        view = await db.get_dashboard_view(name)
+        user = await get_current_user(request)
+        user_id = user["id"] if user and user["id"] != "default" else None
+
+        # Check share token in query param
+        share_token = request.query_params.get("token")
+        if share_token:
+            view = await db.get_dashboard_view_by_token(share_token)
+        else:
+            view = await db.get_dashboard_view(name, user_id=user_id)
         if not view:
             # Not in DB — let file-based StaticFiles mount handle it (or 404)
             from fastapi.responses import HTMLResponse
