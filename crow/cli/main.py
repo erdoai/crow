@@ -18,10 +18,12 @@ app = typer.Typer(
 agents_app = typer.Typer(help="Manage agent definitions.")
 mcp_app = typer.Typer(help="Manage MCP servers.")
 settings_app = typer.Typer(help="Import/export config.")
+dashboard_app = typer.Typer(help="Manage custom dashboard views.")
 app.command("init")(init_project)
 app.add_typer(agents_app, name="agents")
 app.add_typer(mcp_app, name="mcp")
 app.add_typer(settings_app, name="settings")
+app.add_typer(dashboard_app, name="dashboard")
 
 console = Console()
 LOG_FMT = "%(asctime)s %(name)s %(levelname)s %(message)s"
@@ -402,6 +404,117 @@ def settings_export(
     resp = httpx.get(f"{server_url}/settings/export")
     resp.raise_for_status()
     console.print(yaml.dump(resp.json(), default_flow_style=False))
+
+
+# -- Dashboard subcommands --
+
+
+@dashboard_app.command("upload")
+def dashboard_upload(
+    name: str = typer.Argument(help="Dashboard view name (kebab-case identifier)"),
+    path: str = typer.Argument(help="Path to directory containing dashboard files"),
+    label: str = typer.Option(None, "--label", "-l", help="Display label (defaults to name)"),
+    server_url: str = typer.Option(
+        DEFAULT_URL, "--url", help="Crow server URL"
+    ),
+):
+    """Upload a dashboard directory to the server."""
+    import base64
+    from pathlib import Path
+
+    import httpx
+
+    dir_path = Path(path).expanduser().resolve()
+    if not dir_path.is_dir():
+        console.print(f"[red]Directory not found: {dir_path}[/red]")
+        raise typer.Exit(1)
+
+    # Collect all files, base64-encode contents
+    files: dict[str, str] = {}
+    for file in sorted(dir_path.rglob("*")):
+        if file.is_file():
+            rel = str(file.relative_to(dir_path))
+            files[rel] = base64.b64encode(file.read_bytes()).decode()
+
+    if not files:
+        console.print(f"[dim]No files found in {dir_path}[/dim]")
+        return
+
+    payload = {
+        "name": name,
+        "label": label or name,
+        "files": files,
+    }
+
+    try:
+        resp = httpx.post(
+            f"{server_url}/api/dashboard/views",
+            json=payload,
+            timeout=30.0,
+        )
+        resp.raise_for_status()
+        console.print(
+            f"[green]Uploaded dashboard:[/green] {name} ({len(files)} files)"
+        )
+    except httpx.HTTPError as e:
+        console.print(f"[red]Upload failed: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@dashboard_app.command("list")
+def dashboard_list(
+    server_url: str = typer.Option(
+        DEFAULT_URL, "--url", help="Crow server URL"
+    ),
+):
+    """List all dashboard views (file-based and DB-stored)."""
+    import httpx
+
+    try:
+        views = httpx.get(f"{server_url}/api/dashboard/views").json()
+        if not views:
+            console.print("[dim]No dashboard views configured[/dim]")
+            return
+
+        table = Table(title="Dashboard Views")
+        table.add_column("Name")
+        table.add_column("Label")
+        table.add_column("Source")
+        table.add_column("URL")
+        for v in views:
+            table.add_row(
+                v["name"],
+                v["label"],
+                v.get("source", ""),
+                v["url"],
+            )
+        console.print(table)
+
+    except httpx.HTTPError as e:
+        console.print(f"[red]Cannot reach server: {e}[/red]")
+
+
+@dashboard_app.command("delete")
+def dashboard_delete(
+    name: str = typer.Argument(help="Dashboard view name to delete"),
+    server_url: str = typer.Option(
+        DEFAULT_URL, "--url", help="Crow server URL"
+    ),
+):
+    """Delete a DB-stored dashboard view."""
+    import httpx
+
+    try:
+        resp = httpx.delete(f"{server_url}/api/dashboard/views/{name}")
+        resp.raise_for_status()
+        console.print(f"[green]Deleted:[/green] {name}")
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            console.print(f"[red]View not found: {name}[/red]")
+        else:
+            console.print(f"[red]Failed: {e}[/red]")
+    except httpx.HTTPError as e:
+        console.print(f"[red]Cannot reach server: {e}[/red]")
 
 
 if __name__ == "__main__":

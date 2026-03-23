@@ -1,11 +1,13 @@
 """FastAPI application with lifespan."""
 
+import base64
 import logging
+import mimetypes
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from crow.auth.middleware import AuthMiddleware
@@ -120,6 +122,33 @@ def create_app() -> FastAPI:
                 StaticFiles(directory=view_path, html=True),
                 name=f"custom-{view_name}",
             )
+
+    # DB-stored custom dashboard views — serves files from the database
+    @app.get("/dashboard/custom/{name}/{path:path}")
+    async def serve_db_dashboard(name: str, path: str, request: Request):
+        """Serve dashboard files from DB. Falls back to file-based mounts."""
+        db = request.app.state.db
+        view = await db.get_dashboard_view(name)
+        if not view:
+            # Not in DB — let file-based StaticFiles mount handle it (or 404)
+            from fastapi.responses import HTMLResponse
+            return HTMLResponse(status_code=404, content="Not found")
+
+        import json
+        files = view["files"] if isinstance(view["files"], dict) else json.loads(view["files"])
+        file_path = path or "index.html"
+        if not file_path or file_path.endswith("/"):
+            file_path = (file_path or "") + "index.html"
+
+        content_b64 = files.get(file_path)
+        if not content_b64:
+            return Response(status_code=404, content="File not found")
+
+        content = base64.b64decode(content_b64)
+        mime_type, _ = mimetypes.guess_type(file_path)
+        if not mime_type:
+            mime_type = "application/octet-stream"
+        return Response(content=content, media_type=mime_type)
 
     # SPA catch-all — serves index.html for all non-API routes
     if SPA_DIR.exists():

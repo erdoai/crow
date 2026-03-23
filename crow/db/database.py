@@ -625,3 +625,41 @@ class Database:
             key_id,
         )
 
+    # -- Dashboard Views --
+
+    async def upsert_dashboard_view(
+        self, name: str, label: str, files: dict[str, str]
+    ) -> None:
+        import json
+
+        files_json = json.dumps(files)
+        await self._pool.execute(
+            """INSERT INTO dashboard_views (name, label, files, created_at, updated_at)
+               VALUES ($1, $2, $3::jsonb, $4, $5)
+               ON CONFLICT (name) DO UPDATE SET
+                 label = $2, files = $3::jsonb, updated_at = $5""",
+            name,
+            label,
+            files_json,
+            datetime.now(UTC),
+            datetime.now(UTC),
+        )
+
+    async def get_dashboard_view(self, name: str) -> dict | None:
+        row = await self._pool.fetchrow(
+            "SELECT * FROM dashboard_views WHERE name = $1", name
+        )
+        return dict(row) if row else None
+
+    async def list_dashboard_views(self) -> list[dict]:
+        rows = await self._pool.fetch(
+            "SELECT name, label, created_at, updated_at FROM dashboard_views ORDER BY name"
+        )
+        return [dict(r) for r in rows]
+
+    async def delete_dashboard_view(self, name: str) -> bool:
+        result = await self._pool.execute(
+            "DELETE FROM dashboard_views WHERE name = $1", name
+        )
+        return result.split()[-1] != "0"
+

@@ -164,6 +164,10 @@ crow mcp remove <name>                 # remove MCP server
 
 crow settings import crow.yml       # import config
 crow settings export                # export config
+
+crow dashboard upload <name> <dir>    # upload custom dashboard files
+crow dashboard list                   # list all dashboard views
+crow dashboard delete <name>          # delete a dashboard view
 ```
 
 ## Using Crow from another project
@@ -194,7 +198,10 @@ crow serve                               # start server
 crow worker                              # start worker
 crow agents sync ./agents                # push agents to server
 crow mcp add my-tools https://my-mcp/mcp # register external tools
+crow dashboard upload trading ./dashboard --label "Trading Floor"
 ```
+
+Custom dashboards are plain HTML/JS/CSS — no React or build step needed. They're served at `/dashboard/custom/{name}/` and connect to Crow APIs via same-origin requests (SSE for real-time state, REST for triggers).
 
 **API for custom dashboards and integrations:**
 
@@ -238,17 +245,21 @@ Deploy with [scaffold](https://github.com/erdoai/scaffold) or any Docker-compati
 services:
   server:
     provider: railway
-    start: "crow serve --port $PORT"
+    start: "crow serve"
     env:
       CROW_DATABASE_URL: "${{postgres.url}}"
   worker:
     provider: railway
-    start: "crow worker --url ${{server.url}}"
+    start: "crow worker"
+    env:
+      CROW_SERVER_URL: "${{server.url}}"
 databases:
   postgres:
     provider: railway
     plugin: postgres
 ```
+
+`crow serve` reads `$PORT` automatically (Railway sets it). `crow worker` reads `$CROW_SERVER_URL` to find the server — no hardcoded URLs.
 
 ## Auth (optional)
 

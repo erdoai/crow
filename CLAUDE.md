@@ -50,6 +50,11 @@ crow agents export ./agents     # export all agents from server as .md files
 crow mcp add NAME URL           # add MCP server
 crow mcp list                   # list MCP servers
 crow mcp remove NAME            # remove MCP server
+
+# Custom dashboards
+crow dashboard upload NAME ./path  # upload a dashboard directory to the server
+crow dashboard list                # list all dashboard views
+crow dashboard delete NAME         # delete a DB-stored dashboard view
 ```
 
 ## Using crow in another project
@@ -137,12 +142,12 @@ mcp:
     headers:
       Authorization: "Bearer ${MY_API_KEY}"
 
-# Custom dashboard views served alongside the built-in UI
+# Custom dashboard views — file-based (same repo) or uploaded via API
 dashboard:
   views:
     trading:
       label: Trading Floor
-      path: ./dashboards/trading      # directory with index.html + static assets
+      path: ./dashboards/trading      # file-based: directory with index.html + assets
 
 # Auth (optional — disabled by default)
 auth:
@@ -181,7 +186,9 @@ GET  /api/jobs                         # list jobs
 GET  /api/conversations/{id}/messages  # conversation history
 ```
 
-All endpoints require auth (session cookie or `Authorization: Bearer <api-key>` header) when auth is enabled.
+All endpoints are **same-origin** when the dashboard is served by Crow (at `/dashboard/custom/{name}/`), so no CORS config is needed — just use relative paths (`/api/state/stream`) in your JS. Auth is handled by the session cookie automatically.
+
+When auth is enabled, API endpoints require a session cookie or `Authorization: Bearer <api-key>` header.
 
 ### MCP server pattern
 
@@ -287,6 +294,26 @@ dashboard:
 ```
 
 Views are served at `/dashboard/custom/{name}/` and require auth. The built-in dashboard header shows links to all configured views. Custom dashboards are plain HTML/JS/CSS — no React or build step required. They connect to Crow via the state channel SSE stream and standard API endpoints.
+
+**Uploading dashboards via API/CLI (no files on server disk):**
+
+External projects can upload dashboard files to a running Crow instance without needing files on the server filesystem. Files are stored as base64-encoded JSONB in the `dashboard_views` table.
+
+```bash
+# Upload a dashboard directory
+crow dashboard upload trading ./dashboards/trading --label "Trading Floor"
+
+# Or via API (JSON)
+curl -X POST /api/dashboard/views \
+  -H 'Content-Type: application/json' \
+  -d '{"name": "trading", "label": "Trading Floor", "files": {"index.html": "<base64>", "app.js": "<base64>"}}'
+
+# List all views (file-based + DB-stored)
+crow dashboard list
+
+# Delete a DB-stored view
+crow dashboard delete trading
+```
 
 ## Custom agents
 

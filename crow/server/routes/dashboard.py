@@ -1,6 +1,8 @@
 """Dashboard JSON API endpoints for the React SPA."""
 
-from fastapi import APIRouter, HTTPException, Request
+import base64
+
+from fastapi import APIRouter, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
 from crow.auth.api_keys import generate_api_key
@@ -23,12 +25,76 @@ async def onboarding_submit(form: "OnboardingForm", request: Request):
 
 @router.get("/api/dashboard/views")
 async def list_views(request: Request):
-    """Return configured custom dashboard views."""
-    views = getattr(request.app.state, "dashboard_config", {}).get("views", {})
-    return [
-        {"name": name, "label": cfg.get("label", name), "url": f"/dashboard/custom/{name}/"}
-        for name, cfg in views.items()
+    """Return configured custom dashboard views (file-based + DB-stored)."""
+    # File-based views from crow.yml
+    file_views = getattr(request.app.state, "dashboard_config", {}).get("views", {})
+    result = [
+        {
+            "name": name,
+            "label": cfg.get("label", name),
+            "url": f"/dashboard/custom/{name}/",
+            "source": "file",
+        }
+        for name, cfg in file_views.items()
     ]
+
+    # DB-stored views
+    db = request.app.state.db
+    db_views = await db.list_dashboard_views()
+    for v in db_views:
+        result.append({
+            "name": v["name"],
+            "label": v["label"],
+            "url": f"/dashboard/custom/{v['name']}/",
+            "source": "db",
+        })
+
+    return result
+
+
+@router.post("/api/dashboard/views")
+async def upload_view(request: Request):
+    """Upload a dashboard view. Accepts multipart form or JSON."""
+    db = request.app.state.db
+    content_type = request.headers.get("content-type", "")
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        name = form.get("name")
+        label = form.get("label") or name
+        if not name:
+            raise HTTPException(status_code=400, detail="name is required")
+
+        files: dict[str, str] = {}
+        for key, value in form.multi_items():
+            if key == "files" and hasattr(value, "read"):
+                upload: UploadFile = value
+                content = await upload.read()
+                files[upload.filename] = base64.b64encode(content).decode()
+
+        await db.upsert_dashboard_view(str(name), str(label), files)
+        return {"status": "ok", "name": name, "files": len(files)}
+
+    else:
+        body = await request.json()
+        name = body.get("name")
+        label = body.get("label") or name
+        files = body.get("files", {})
+        if not name:
+            raise HTTPException(status_code=400, detail="name is required")
+
+        await db.upsert_dashboard_view(name, label, files)
+        return {"status": "ok", "name": name, "files": len(files)}
+
+
+@router.delete("/api/dashboard/views/{name}")
+async def delete_view(name: str, request: Request):
+    """Delete a DB-stored dashboard view."""
+    db = request.app.state.db
+    deleted = await db.delete_dashboard_view(name)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="View not found")
+    return {"status": "deleted"}
 
 
 @router.get("/api/dashboard")
