@@ -4,13 +4,32 @@ import secrets
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
 
+from crow.auth.dependencies import get_current_user
 from crow.auth.email import send_verification_code
 from crow.auth.session import create_session_token
 
 router = APIRouter(prefix="/auth")
+
+# Separate router for /api/me (no prefix)
+api_router = APIRouter()
+
+
+@api_router.get("/api/me")
+async def get_me(request: Request):
+    """Return current user as JSON (or 401)."""
+    user = await get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    auth_config = request.app.state.auth_config
+    return {
+        "id": user["id"],
+        "email": user.get("email", ""),
+        "display_name": user.get("display_name"),
+        "auth_enabled": auth_config.get("enabled", False),
+    }
 
 CODE_EXPIRY_MINUTES = 10
 MAX_CODES_PER_WINDOW = 3
@@ -81,7 +100,7 @@ async def verify(req: VerifyRequest, request: Request):
 
 @router.post("/logout")
 async def logout(request: Request):
-    """Clear session and redirect to login."""
-    response = RedirectResponse(url="/login", status_code=303)
+    """Clear session cookie."""
+    response = JSONResponse({"status": "ok"})
     response.delete_cookie("crow_session")
     return response

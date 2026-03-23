@@ -110,6 +110,99 @@ async def dashboard_page(request: Request):
     )
 
 
+@router.get("/chat", response_class=HTMLResponse)
+@router.get("/chat/{conversation_id}", response_class=HTMLResponse)
+async def chat_page(request: Request, conversation_id: str | None = None):
+    """Render chat page."""
+    user = await get_current_user(request)
+    auth_config = request.app.state.auth_config
+    auth_enabled = auth_config.get("enabled", False)
+
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+
+    db = request.app.state.db
+    agents = await db.list_agent_defs()
+    conversations = await db.list_conversations(
+        limit=50, user_id=user["id"] if auth_enabled else None
+    )
+
+    messages = []
+    current_thread_id = None
+    current_agent = None
+    if conversation_id:
+        messages = await db.get_messages(conversation_id)
+        conv = await db.get_conversation(conversation_id)
+        if conv:
+            current_thread_id = conv["gateway_thread_id"]
+
+    return templates.TemplateResponse(
+        request,
+        "chat.html.j2",
+        {
+            "agents": agents,
+            "conversations": conversations,
+            "messages": messages,
+            "current_conversation_id": conversation_id,
+            "current_thread_id": current_thread_id,
+            "current_agent": current_agent,
+        },
+    )
+
+
+@router.get("/api/dashboard")
+async def dashboard_data(request: Request):
+    """Return dashboard data as JSON for the SPA."""
+    user = await get_current_user(request)
+    auth_config = request.app.state.auth_config
+    auth_enabled = auth_config.get("enabled", False)
+
+    if not user:
+        raise HTTPException(status_code=401)
+
+    db = request.app.state.db
+
+    agents = await db.list_agent_defs()
+    conversations = await db.list_conversations(
+        limit=10, user_id=user["id"] if auth_enabled else None
+    )
+    knowledge = await db.search_knowledge(
+        user_id=user["id"] if auth_enabled else None, limit=20
+    )
+    api_keys = await db.list_api_keys(
+        user_id=user["id"] if auth_enabled and user["id"] != "default" else None
+    )
+    display_name = user.get("display_name") or "User"
+
+    return {
+        "agents": [{"name": a["name"], "description": a.get("description", "")} for a in agents],
+        "conversations": [
+            {
+                "id": c["id"],
+                "gateway": c.get("gateway", ""),
+                "gateway_thread_id": c.get("gateway_thread_id", ""),
+                "updated_at": c["updated_at"].isoformat() if c.get("updated_at") else None,
+            }
+            for c in conversations
+        ],
+        "knowledge": [
+            {
+                "id": k["id"],
+                "category": k.get("category", ""),
+                "title": k.get("title", ""),
+                "agent_name": k.get("agent_name", ""),
+            }
+            for k in knowledge
+        ],
+        "api_keys": [
+            {"id": k["id"], "name": k["name"], "key_prefix": k["key_prefix"]}
+            for k in api_keys
+        ],
+        "display_name": display_name,
+        "auth_enabled": auth_enabled,
+    }
+
+
 class CreateApiKeyRequest(BaseModel):
     name: str
 

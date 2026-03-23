@@ -9,7 +9,7 @@ from collections.abc import Callable
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse, RedirectResponse, Response
+from starlette.responses import JSONResponse, Response
 
 from crow.auth.dependencies import get_current_user
 
@@ -23,11 +23,13 @@ PUBLIC_PATHS: set[str] = {
     "/auth/logout",
     "/login",
     "/",
+    "/api/me",
 }
 
 # Path prefixes that are always public.
 PUBLIC_PREFIXES: tuple[str, ...] = (
     "/static/",
+    "/assets/",
 )
 
 # Path prefixes where routes enforce their own auth via x-worker-key.
@@ -95,11 +97,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 {"detail": "Invalid API key"}, status_code=401
             )
 
+        # SPA routes: let the catch-all serve index.html (React handles auth)
         accept = request.headers.get("accept", "")
-        if "text/html" in accept:
-            auth_config = getattr(request.app.state, "auth_config", {})
-            if auth_config.get("enabled", False):
-                return RedirectResponse(url="/login", status_code=303)
+        if "text/html" in accept and not path.startswith("/api/"):
+            return await call_next(request)
 
         return JSONResponse(
             {"detail": "Authentication required"}, status_code=401
