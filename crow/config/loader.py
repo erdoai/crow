@@ -20,7 +20,7 @@ AUTH_DEFAULTS: dict[str, Any] = {
     "api_key": "",
     "resend": {
         "api_key": "",
-        "from": "crow <noreply@erdo.ai>",
+        "from": os.environ.get("RESEND_FROM", "crow <noreply@erdo.ai>"),
     },
 }
 
@@ -69,7 +69,9 @@ async def import_config(db: Database, config: dict[str, Any]) -> None:
     mcp = config.get("mcp", {})
 
     for name, server in mcp.items():
-        await db.upsert_mcp_server(name=name, url=server["url"])
+        await db.upsert_mcp_server(
+            name=name, url=server["url"], headers=server.get("headers", {})
+        )
         logger.info("Imported MCP server: %s → %s", name, server["url"])
 
     for name, agent in agents.items():
@@ -100,7 +102,11 @@ async def export_config(db: Database) -> dict[str, Any]:
 
     mcp = {}
     for s in await db.list_mcp_servers():
-        mcp[s["name"]] = {"url": s["url"]}
+        entry: dict = {"url": s["url"]}
+        headers = s.get("headers")
+        if headers:
+            entry["headers"] = headers
+        mcp[s["name"]] = entry
 
     return {"agents": agents, "mcp": mcp}
 

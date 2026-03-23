@@ -190,4 +190,4 @@ auth:
 
 ## License
 
-MIT
+[FCL-1.0-ALv2](LICENSE) (Fair Core License — converts to Apache 2.0 after 2 years)

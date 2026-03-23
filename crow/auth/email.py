@@ -1,12 +1,15 @@
 """Email verification via Resend."""
 
 import logging
+import os
 from typing import Any
 
 import httpx
 from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_RESEND_FROM = os.environ.get("RESEND_FROM", "crow <noreply@erdo.ai>")
 
 RESEND_API_URL = "https://api.resend.com/emails"
 
@@ -16,7 +19,7 @@ async def send_verification_code(
 ) -> None:
     """Send a 6-digit verification code via Resend, or log it in dev mode."""
     resend_key = auth_config.get("resend", {}).get("api_key", "")
-    resend_from = auth_config.get("resend", {}).get("from", "crow <noreply@erdo.ai>")
+    resend_from = auth_config.get("resend", {}).get("from", DEFAULT_RESEND_FROM)
 
     if not resend_key:
         logger.warning("DEV MODE — verification code for %s: %s", email, code)

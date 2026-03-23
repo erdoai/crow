@@ -6,6 +6,7 @@ build-backend = "hatchling.build"
 name = "crow"
 dynamic = ["version"]
 description = "Agent coordination and monitoring system"
+license = "FCL-1.0-ALv2"
 requires-python = ">=3.11"
 dependencies = [
     "anthropic>=0.40,<1",
