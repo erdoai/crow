@@ -21,6 +21,7 @@ services:
       CROW_PORT: "8100"
       CROW_IMESSAGE_ENABLED: "false"
       SESSION_SECRET: "${{env.SESSION_SECRET}}"
+      CROW_API_KEY: "${{env.CROW_API_KEY}}"
       RESEND_API_KEY: "${{env.RESEND_API_KEY}}"
       JINA_API_KEY: "${{env.JINA_API_KEY}}"
       BROWSERUSE_API_KEY: "${{env.BROWSERUSE_API_KEY}}"
