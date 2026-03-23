@@ -15,6 +15,7 @@ router = APIRouter()
 class MCPServerCreate(BaseModel):
     name: str
     url: str
+    headers: dict = {}
 
 
 @router.get("/mcp-servers")
@@ -35,7 +36,7 @@ async def get_mcp_server(name: str, request: Request):
 @router.post("/mcp-servers")
 async def create_mcp_server(body: MCPServerCreate, request: Request):
     db = request.app.state.db
-    await db.upsert_mcp_server(name=body.name, url=body.url)
+    await db.upsert_mcp_server(name=body.name, url=body.url, headers=body.headers)
     return {"status": "ok", "name": body.name}
 
 

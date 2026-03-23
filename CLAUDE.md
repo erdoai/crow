@@ -31,6 +31,15 @@ crow worker             # start worker (polls server for jobs)
 crow message <agent> "text"  # send a test message
 crow status             # system status
 crow jobs               # list jobs
+
+# Agent management
+crow agents sync ./agents   # sync local agent .md files to server
+crow agents export ./agents # export all agents from server as .md files
+
+# MCP servers
+crow mcp add NAME URL       # add MCP server
+crow mcp list               # list MCP servers
+crow mcp remove NAME        # remove MCP server
 ```
 
 ## Development
@@ -46,7 +55,7 @@ pytest                  # test
 
 ## Deployment
 
-Infrastructure provisioned via [scaffold](docs/scaffold-plan.md):
+Infrastructure provisioned via [scaffold](https://github.com/erdoai/scaffold) ([docs](docs/scaffold-plan.md)):
 ```bash
 scaffold up             # provisions Railway Postgres + server + worker, pushes config
 scaffold dev            # runs crow locally, same Railway DB
@@ -55,11 +64,16 @@ railway up -d -s <id>   # deploy code changes to Railway
 
 ## Config
 
-Two-layer config system:
-- **`crow.yml`** (gitignored): agent definitions, MCP servers, auth settings. Secrets use `${VAR}` syntax resolved from environment at runtime.
+Three config files:
+- **`crow.yml`**: agent definitions, MCP servers, auth settings. Secrets use `${VAR}` syntax resolved from environment at runtime.
+- **`scaffold.config.yml`**: declares required API keys, auto-generated secrets, and optional config. Scaffold reads this during `scaffold up` to prompt for missing keys and auto-generate secrets into `.scaffold/.env`.
 - **Environment variables** with `CROW_` prefix: database URL, API keys, port. See `.env.example`.
 
 In production, `crow.yml` is delivered via the `CROW_CONFIG` env var (set by scaffold from the local file via `${{file:crow.yml}}`). The loader checks `CROW_CONFIG` first, falls back to the file.
+
+### MCP servers
+
+Configured in `crow.yml` under the `mcp:` section. Each server has a URL and optional headers (for API key auth). Any MCP server with an HTTP endpoint works — tools are discovered automatically at runtime.
 
 ### Auth
 
@@ -71,14 +85,32 @@ auth:
   api_key: ${CROW_API_KEY}          # static API key (when auth disabled)
   resend:
     api_key: ${RESEND_API_KEY}      # email OTP via Resend
-    from: "crow <noreply@erdo.ai>"
+    from: ${RESEND_FROM}             # defaults to "crow <noreply@erdo.ai>"
 ```
 
 When enabled: email OTP sign-in → onboarding ("what should I call you?") → dashboard with per-user conversations, knowledge, phone links, API keys. When disabled: dashboard loads directly, single-user mode.
 
+## Custom agents
+
+Define agents as markdown files with YAML frontmatter + prompt body:
+
+```markdown
+---
+name: my-agent
+description: "What this agent does"
+tools: [knowledge_search, knowledge_write]
+mcp_servers: [web-search]
+knowledge_areas: [my-area]
+---
+
+You are an agent that...
+```
+
+Keep agents in a local folder (e.g. `./agents/`) and sync with `crow agents sync ./agents`. Export with `crow agents export ./agents`.
+
 ## Key patterns
 
-- Agents defined in `crow.yml` and stored in DB (`agent_defs` table). Prompt template + tools + MCP servers + knowledge areas.
+- Agents defined in `crow.yml` (built-in) or as markdown files (custom), stored in DB (`agent_defs` table). Prompt template + tools + MCP servers + knowledge areas.
 - Knowledge stored as markdown in Postgres with pgvector embeddings (PARA: Projects/Areas/Resources/Archives), scoped per-user when auth enabled.
 - Event-driven: components communicate via async event bus, not direct calls.
 - iOS app gateway for inbound messages.

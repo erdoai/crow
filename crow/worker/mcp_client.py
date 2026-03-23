@@ -28,7 +28,8 @@ def _mcp_tool_to_anthropic(tool: Any) -> dict:
 async def connect_mcp(server_config: dict):
     """Connect to a remote MCP server via HTTP. Yields an MCPConnection."""
     url = server_config["url"]
-    async with streamablehttp_client(url) as (read, write, _):
+    headers = server_config.get("headers") or {}
+    async with streamablehttp_client(url, headers=headers) as (read, write, _):
         async with ClientSession(read, write) as session:
             await session.initialize()
             yield MCPConnection(session, server_config["name"])

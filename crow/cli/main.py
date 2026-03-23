@@ -13,8 +13,10 @@ from crow.config.settings import Settings
 app = typer.Typer(
     name="crow", help="Agent coordination and monitoring system."
 )
+agents_app = typer.Typer(help="Manage agent definitions.")
 mcp_app = typer.Typer(help="Manage MCP servers.")
 settings_app = typer.Typer(help="Import/export config.")
+app.add_typer(agents_app, name="agents")
 app.add_typer(mcp_app, name="mcp")
 app.add_typer(settings_app, name="settings")
 
@@ -159,6 +161,124 @@ def list_jobs(
         console.print(f"[red]Cannot reach server: {e}[/red]")
 
 
+# -- Agents subcommands --
+
+
+@agents_app.command("sync")
+def agents_sync(
+    folder: str = typer.Argument("./agents", help="Path to agents folder"),
+    server_url: str = typer.Option(
+        DEFAULT_URL, "--url", help="Crow server URL"
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Show what would be synced without making changes"
+    ),
+):
+    """Sync agent markdown files from a local folder to the server."""
+    import glob
+    from pathlib import Path
+
+    import httpx
+
+    from crow.agents.format import markdown_to_agent
+
+    folder_path = Path(folder).expanduser()
+    if not folder_path.is_dir():
+        console.print(f"[red]Folder not found: {folder_path}[/red]")
+        raise typer.Exit(1)
+
+    md_files = sorted(glob.glob(str(folder_path / "**" / "*.md"), recursive=True))
+    if not md_files:
+        console.print(f"[dim]No .md files found in {folder_path}[/dim]")
+        return
+
+    # Get existing MCP servers to warn about missing references
+    mcp_names: set[str] = set()
+    try:
+        mcp_data = httpx.get(f"{server_url}/mcp-servers").json()
+        mcp_names = {s["name"] for s in mcp_data}
+    except httpx.HTTPError:
+        pass
+
+    table = Table(title="Agent Sync" + (" (dry run)" if dry_run else ""))
+    table.add_column("File")
+    table.add_column("Agent")
+    table.add_column("Status")
+    table.add_column("Notes")
+
+    for md_file in md_files:
+        rel_path = str(Path(md_file).relative_to(folder_path))
+        try:
+            content = Path(md_file).read_text()
+            agent_data = markdown_to_agent(content)
+            name = agent_data["name"]
+
+            # Check for missing MCP server references
+            missing_mcp = [
+                m for m in agent_data.get("mcp_servers", [])
+                if m not in mcp_names
+            ]
+            notes = ""
+            if missing_mcp:
+                notes = f"[yellow]MCP not configured: {', '.join(missing_mcp)}[/yellow]"
+
+            if dry_run:
+                table.add_row(rel_path, name, "[dim]would sync[/dim]", notes)
+            else:
+                resp = httpx.post(
+                    f"{server_url}/agents/import",
+                    content=content.encode(),
+                    headers={"Content-Type": "text/markdown"},
+                )
+                resp.raise_for_status()
+                status_text = "[green]synced[/green]"
+                table.add_row(rel_path, name, status_text, notes)
+
+        except ValueError as e:
+            table.add_row(rel_path, "?", f"[red]error: {e}[/red]", "")
+        except httpx.HTTPError as e:
+            table.add_row(rel_path, name, f"[red]failed: {e}[/red]", "")
+
+    console.print(table)
+
+
+@agents_app.command("export")
+def agents_export(
+    folder: str = typer.Argument("./agents", help="Path to export agents to"),
+    server_url: str = typer.Option(
+        DEFAULT_URL, "--url", help="Crow server URL"
+    ),
+):
+    """Export all agents from the server as markdown files."""
+    from pathlib import Path
+
+    import httpx
+
+    folder_path = Path(folder).expanduser()
+    folder_path.mkdir(parents=True, exist_ok=True)
+
+    try:
+        agents_data = httpx.get(f"{server_url}/agents").json()
+    except httpx.HTTPError as e:
+        console.print(f"[red]Cannot reach server: {e}[/red]")
+        raise typer.Exit(1)
+
+    if not agents_data:
+        console.print("[dim]No agents to export[/dim]")
+        return
+
+    for agent in agents_data:
+        name = agent["name"]
+        try:
+            resp = httpx.get(f"{server_url}/agents/{name}/export")
+            resp.raise_for_status()
+            out_path = folder_path / f"{name}.md"
+            out_path.write_text(resp.text)
+            console.print(f"[green]Exported:[/green] {name} → {out_path}")
+        except httpx.HTTPError as e:
+            console.print(f"[red]Failed to export {name}: {e}[/red]")
+
+
 # -- MCP subcommands --
 
 
@@ -166,6 +286,9 @@ def list_jobs(
 def mcp_add(
     name: str = typer.Argument(help="MCP server name"),
     url: str = typer.Argument(help="MCP server URL"),
+    header: list[str] = typer.Option(
+        [], "--header", "-H", help="Header as Key:Value (repeatable)"
+    ),
     server_url: str = typer.Option(
         DEFAULT_URL, "--server", help="Crow server URL"
     ),
@@ -173,9 +296,15 @@ def mcp_add(
     """Add an MCP server."""
     import httpx
 
+    headers = {}
+    for h in header:
+        key, _, value = h.partition(":")
+        if key and value:
+            headers[key.strip()] = value.strip()
+
     resp = httpx.post(
         f"{server_url}/mcp-servers",
-        json={"name": name, "url": url},
+        json={"name": name, "url": url, "headers": headers},
     )
     resp.raise_for_status()
     console.print(f"[green]Added MCP server:[/green] {name} → {url}")

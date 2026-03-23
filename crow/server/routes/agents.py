@@ -1,64 +1,12 @@
-import re
 import secrets
-from pathlib import Path
 
-import yaml
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
+from crow.agents.format import agent_to_markdown, markdown_to_agent
+
 router = APIRouter()
-
-PROMPTS_DIR = Path(__file__).parent.parent.parent / "agents" / "prompts"
-
-
-def _resolve_prompt_content(prompt_template: str) -> str:
-    """Read prompt template file content, or return as-is if inline."""
-    if prompt_template.endswith(".j2"):
-        path = PROMPTS_DIR / prompt_template
-        if path.exists():
-            return path.read_text()
-    return prompt_template
-
-
-def _agent_to_markdown(agent: dict) -> str:
-    """Serialize an agent definition to markdown with YAML frontmatter."""
-    prompt_content = _resolve_prompt_content(agent["prompt_template"])
-    frontmatter = {
-        "name": agent["name"],
-        "description": agent["description"],
-    }
-    if agent.get("tools"):
-        frontmatter["tools"] = list(agent["tools"])
-    if agent.get("mcp_servers"):
-        frontmatter["mcp_servers"] = list(agent["mcp_servers"])
-    if agent.get("knowledge_areas"):
-        frontmatter["knowledge_areas"] = list(agent["knowledge_areas"])
-
-    fm_str = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False).strip()
-    return f"---\n{fm_str}\n---\n\n{prompt_content}"
-
-
-def _markdown_to_agent(content: str) -> dict:
-    """Parse a markdown agent file (YAML frontmatter + prompt body)."""
-    match = re.match(r"^---\s*\n(.+?)\n---\s*\n(.*)$", content, re.DOTALL)
-    if not match:
-        raise ValueError("Invalid agent file: missing YAML frontmatter (---)")
-
-    frontmatter = yaml.safe_load(match.group(1))
-    prompt = match.group(2).strip()
-
-    if not frontmatter or "name" not in frontmatter:
-        raise ValueError("Invalid agent file: frontmatter must include 'name'")
-
-    return {
-        "name": frontmatter["name"],
-        "description": frontmatter.get("description", ""),
-        "prompt_template": prompt,
-        "tools": frontmatter.get("tools", []),
-        "mcp_servers": frontmatter.get("mcp_servers", []),
-        "knowledge_areas": frontmatter.get("knowledge_areas", []),
-    }
 
 
 # -- CRUD --
@@ -127,7 +75,7 @@ async def export_agent(name: str, request: Request):
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    md = _agent_to_markdown(agent)
+    md = agent_to_markdown(agent)
     return PlainTextResponse(
         md,
         media_type="text/markdown",
@@ -142,7 +90,7 @@ async def import_agent(request: Request):
     content = body.decode("utf-8")
 
     try:
-        agent_data = _markdown_to_agent(content)
+        agent_data = markdown_to_agent(content)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

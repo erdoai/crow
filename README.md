@@ -76,6 +76,30 @@ Each agent gets:
 - **MCP tools** — dynamically discovered from connected MCP servers
 - **PARA knowledge** — persistent learnings in Postgres (Projects, Areas, Resources, Archives)
 
+## Custom agents
+
+Define agents as markdown files and sync them to any crow instance:
+
+```markdown
+---
+name: researcher
+description: "Researches topics and saves findings"
+tools: [knowledge_search, knowledge_write]
+mcp_servers: [web-search]
+knowledge_areas: [research]
+---
+
+You are a research agent. When given a topic, search the web for relevant
+information, synthesize it, and save key findings to your knowledge base.
+```
+
+Keep agents in a local folder and sync:
+
+```bash
+crow agents sync ./agents       # push local .md files to the server
+crow agents export ./agents     # pull all agents as .md files
+```
+
 ## MCP integration
 
 Connect any MCP server to give agents new capabilities:
@@ -84,28 +108,35 @@ Connect any MCP server to give agents new capabilities:
 crow mcp add my-tools http://localhost:3001/mcp
 ```
 
-Or in `crow.yml`:
+Or in `crow.yml` (with optional auth headers):
 
 ```yaml
 mcp:
-  my-tools:
-    url: http://localhost:3001/mcp
+  web-search:
+    url: https://mcp.example.com/v1
+    headers:
+      Authorization: "Bearer ${MY_API_KEY}"
 ```
 
-Workers discover tools from each MCP server at job start and pass them to Claude alongside the built-in tools.
+Any MCP server with an HTTP endpoint works. Workers discover tools from each server at job start and pass them to Claude alongside the built-in tools.
 
 ## Configuration
 
-**`crow.yml`** — agents, MCP servers, auth. Auto-imported into DB on first startup.
+| File | Purpose |
+|------|---------|
+| `crow.yml` | Agent definitions, MCP servers, auth settings |
+| `scaffold.config.yml` | Required/optional API keys + auto-generated secrets |
+| `scaffold.yml` | Infrastructure manifest (Railway services, databases, domains) |
+| `.env.example` | Reference for all environment variables |
+
+**`crow.yml`** — agents, MCP servers, auth. Auto-imported into DB on first startup. Supports `${VAR}` syntax for env var references.
 
 ```bash
 crow settings import crow.yml   # reload config into DB
 crow settings export            # dump current config as YAML
 ```
 
-**Environment variables** — `CROW_` prefix. See [`.env.example`](.env.example).
-
-`crow.yml` supports **`${VAR}` syntax** for env var references.
+**`scaffold.config.yml`** — declares what API keys the project needs. On `scaffold up`, it auto-generates secrets and prompts for missing required keys. Everything is stored in `.scaffold/.env` (gitignored).
 
 ## CLI
 
@@ -116,9 +147,12 @@ crow message <agent> "text"         # send a message
 crow status                         # show agents + workers
 crow jobs                           # list recent jobs
 
-crow mcp add <name> <url>           # register MCP server
-crow mcp list                       # list MCP servers
-crow mcp remove <name>              # remove MCP server
+crow agents sync <folder>              # sync .md agent files to server
+crow agents export <folder>            # export agents as .md files
+
+crow mcp add <name> <url>              # register MCP server
+crow mcp list                          # list MCP servers
+crow mcp remove <name>                 # remove MCP server
 
 crow settings import crow.yml       # import config
 crow settings export                # export config
@@ -147,7 +181,7 @@ Stored as markdown in Postgres. With pgvector enabled, agents can search semanti
 
 Docker image published to `ghcr.io/erdoai/crow` on every push to main.
 
-Deploy with [scaffold](docs/scaffold-plan.md) or any Docker-compatible platform:
+Deploy with [scaffold](https://github.com/erdoai/scaffold) or any Docker-compatible platform:
 
 ```yaml
 # scaffold.yml

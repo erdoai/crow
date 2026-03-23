@@ -1,3 +1,7 @@
+# Crow — agent coordination system
+# Infrastructure config for scaffold (https://github.com/erdoai/scaffold)
+# Keys defined in scaffold.config.yml, stored in .scaffold/.env
+
 project: crow
 region: us-west1
 
@@ -18,6 +22,9 @@ services:
       CROW_IMESSAGE_ENABLED: "false"
       SESSION_SECRET: "${{env.SESSION_SECRET}}"
       RESEND_API_KEY: "${{env.RESEND_API_KEY}}"
+      JINA_API_KEY: "${{env.JINA_API_KEY}}"
+      BROWSERUSE_API_KEY: "${{env.BROWSERUSE_API_KEY}}"
+      DEVBOT_API_KEY: "${{env.DEVBOT_API_KEY}}"
       CROW_CONFIG: "${{file:crow.yml}}"
 
   worker:

@@ -1,0 +1,38 @@
+# Scaffold configuration for crow
+# https://github.com/erdoai/scaffold
+
+# Auto-generated secrets — scaffold creates these automatically if missing.
+# Stored in .scaffold/.env (gitignored).
+auto:
+  SESSION_SECRET:
+    type: secret
+    length: 32
+  WORKER_API_KEY:
+    type: secret
+    length: 24
+
+# Required keys — scaffold will prompt for these if not set in .scaffold/.env.
+# These are API keys you need to obtain from each provider.
+required:
+  ANTHROPIC_API_KEY:
+    description: "Claude API key"
+    url: https://console.anthropic.com/settings/keys
+  RESEND_API_KEY:
+    description: "Resend email API key (for auth OTP)"
+    url: https://resend.com/api-keys
+  JINA_API_KEY:
+    description: "Jina AI API key (web search + reader)"
+    url: https://jina.ai/api-key
+  BROWSERUSE_API_KEY:
+    description: "browser-use API key (web automation)"
+    url: https://www.browser-use.com
+
+# Optional keys — scaffold will note these are available but won't block without them.
+optional:
+  DEVBOT_API_KEY:
+    description: "Devbot API key (code generation)"
+  DEVBOT_URL:
+    description: "Devbot server URL"
+    default: https://devbot.erdo.ai
+  PILOT_URL:
+    description: "Pilot server URL"

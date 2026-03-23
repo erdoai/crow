@@ -29,15 +29,26 @@ agents:
   #   knowledge_areas: [research]
 
 # -- MCP Servers --
-# External tool providers. Crow connects as an HTTP client.
-# Agents with `mcp: [name]` automatically get all tools from that server.
+# External tool providers. Crow connects via HTTP and discovers tools at runtime.
+# Agents reference servers by name in their `mcp:` list.
+# Headers support ${VAR} syntax for API keys.
 # Add via CLI: crow mcp add my-tools http://localhost:3001/mcp
 
 mcp: {}
   # my-tools:
   #   url: http://localhost:3001/mcp
-  # slack:
-  #   url: http://slack-mcp.railway.app/mcp
+  #
+  # Example: Jina AI (web search + reader)
+  # jina:
+  #   url: https://mcp.jina.ai/v1
+  #   headers:
+  #     Authorization: "Bearer ${JINA_API_KEY}"
+  #
+  # Example: browser-use (web automation)
+  # browser-use:
+  #   url: https://api.browser-use.com/mcp
+  #   headers:
+  #     x-browser-use-api-key: "${BROWSERUSE_API_KEY}"
 
 # -- Auth (optional) --
 # Email-based auth with magic codes via Resend.
@@ -53,7 +64,10 @@ mcp: {}
 
 # -- Built-in tools reference --
 # These are always available (no MCP needed):
-#   delegate_to_agent  — PA agent delegates to specialist agents
+#   delegate_to_agent  — Route work to another agent
 #   knowledge_search   — Search PARA knowledge base (semantic + keyword)
 #   knowledge_write    — Save a learning to knowledge base
 #   knowledge_archive  — Archive a knowledge entry
+#   create_agent       — Create a new agent definition
+#   list_agents        — List all agents
+#   delete_agent       — Delete an agent

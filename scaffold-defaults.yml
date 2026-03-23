@@ -1,7 +1,0 @@
-auto:
-  SESSION_SECRET:
-    type: secret
-    length: 32
-  WORKER_API_KEY:
-    type: secret
-    length: 24
