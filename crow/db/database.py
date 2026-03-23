@@ -389,6 +389,34 @@ class Database:
             "DELETE FROM agent_defs WHERE name = $1", name
         )
 
+    # -- Agent Shares --
+
+    async def create_agent_share(self, agent_name: str, token: str) -> str:
+        row = await self._pool.fetchrow(
+            """INSERT INTO agent_shares (agent_name, token)
+               VALUES ($1, $2) RETURNING id""",
+            agent_name,
+            token,
+        )
+        return row["id"]
+
+    async def get_agent_share_by_token(self, token: str) -> dict | None:
+        row = await self._pool.fetchrow(
+            "SELECT * FROM agent_shares WHERE token = $1", token
+        )
+        return dict(row) if row else None
+
+    async def get_agent_share(self, agent_name: str) -> dict | None:
+        row = await self._pool.fetchrow(
+            "SELECT * FROM agent_shares WHERE agent_name = $1", agent_name
+        )
+        return dict(row) if row else None
+
+    async def delete_agent_share(self, agent_name: str) -> None:
+        await self._pool.execute(
+            "DELETE FROM agent_shares WHERE agent_name = $1", agent_name
+        )
+
     # -- MCP Servers --
 
     async def upsert_mcp_server(self, name: str, url: str) -> None:

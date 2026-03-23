@@ -30,6 +30,8 @@ PUBLIC_PATHS: set[str] = {
 PUBLIC_PREFIXES: tuple[str, ...] = (
     "/static/",
     "/assets/",
+    "/shared/",
+    "/api/shared/",
 )
 
 # Path prefixes where routes enforce their own auth via x-worker-key.

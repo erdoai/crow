@@ -1,17 +1,20 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { fetchJSON, type Conversation, type DashboardData } from '../api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { LogOut, Key, Brain, MessageSquare, Cpu } from 'lucide-react'
+import { LogOut, Key, Brain, MessageSquare, Cpu, Download, Share2, Upload, Check, Link } from 'lucide-react'
 
 export default function DashboardPage() {
   const navigate = useNavigate()
   const [data, setData] = useState<DashboardData | null>(null)
   const [keyName, setKeyName] = useState('')
   const [newKey, setNewKey] = useState('')
+  const [shareUrl, setShareUrl] = useState<Record<string, string>>({})
+  const [copiedShare, setCopiedShare] = useState('')
+  const importRef = React.useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     fetchJSON<DashboardData>('/api/dashboard').then(setData)
@@ -56,6 +59,39 @@ export default function DashboardPage() {
     await poll()
   }
 
+  async function exportAgent(name: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    const res = await fetch(`/agents/${name}/export`)
+    if (!res.ok) return
+    const text = await res.text()
+    const blob = new Blob([text], { type: 'text/markdown' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${name}.md`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  async function shareAgent(name: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    const res = await fetchJSON<{ url: string }>(`/agents/${name}/share`, { method: 'POST' })
+    setShareUrl(prev => ({ ...prev, [name]: res.url }))
+    await navigator.clipboard.writeText(res.url)
+    setCopiedShare(name)
+    setTimeout(() => setCopiedShare(''), 2000)
+  }
+
+  async function importAgent(file: File) {
+    const text = await file.text()
+    await fetch('/agents/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/markdown' },
+      body: text,
+    })
+    fetchJSON<DashboardData>('/api/dashboard').then(setData)
+  }
+
   async function logout() {
     await fetch('/auth/logout', { method: 'POST' })
     window.location.href = '/login'
@@ -84,9 +120,21 @@ export default function DashboardPage() {
       <main className="max-w-3xl mx-auto p-6 flex flex-col gap-8">
         {/* Agents */}
         <section>
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
-            <Cpu className="h-3.5 w-3.5" /> agents
-          </h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <Cpu className="h-3.5 w-3.5" /> agents
+            </h2>
+            <div>
+              <input ref={importRef} type="file" accept=".md" className="hidden" onChange={e => {
+                const file = e.target.files?.[0]
+                if (file) importAgent(file)
+                e.target.value = ''
+              }} />
+              <Button variant="ghost" size="sm" onClick={() => importRef.current?.click()}>
+                <Upload className="h-3.5 w-3.5 mr-1" /> import
+              </Button>
+            </div>
+          </div>
           <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
             {data.agents.map(agent => (
               <Card
@@ -97,6 +145,17 @@ export default function DashboardPage() {
                 <CardHeader className="p-4">
                   <CardTitle className="text-base text-primary">{agent.name}</CardTitle>
                   <CardDescription>{agent.description}</CardDescription>
+                  <div className="flex gap-1 pt-2">
+                    <Button variant="ghost" size="xs" onClick={e => exportAgent(agent.name, e)} title="export as .md">
+                      <Download className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="xs" onClick={e => shareAgent(agent.name, e)} title="copy share link">
+                      {copiedShare === agent.name
+                        ? <Check className="h-3.5 w-3.5 text-green-600" />
+                        : <Link className="h-3.5 w-3.5" />
+                      }
+                    </Button>
+                  </div>
                 </CardHeader>
               </Card>
             ))}

@@ -4,6 +4,7 @@ import LoginPage from './pages/LoginPage'
 import OnboardingPage from './pages/OnboardingPage'
 import DashboardPage from './pages/DashboardPage'
 import ChatPage from './pages/ChatPage'
+import SharedAgentPage from './pages/SharedAgentPage'
 
 function RequireAuth({ children, user, authEnabled }: {
   children: React.ReactNode
@@ -47,6 +48,7 @@ export default function App() {
           <ChatPage />
         </RequireAuth>
       } />
+      <Route path="/shared/:token" element={<SharedAgentPage />} />
       <Route path="*" element={
         <Navigate to={user ? "/dashboard" : "/login"} replace />
       } />

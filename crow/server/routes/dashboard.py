@@ -87,6 +87,27 @@ async def dashboard_data(request: Request):
     }
 
 
+@router.get("/api/shared/{token}")
+async def shared_agent_data(token: str, request: Request):
+    """Return shared agent data as JSON (public, no auth required)."""
+    db = request.app.state.db
+    share = await db.get_agent_share_by_token(token)
+    if not share:
+        raise HTTPException(status_code=404, detail="Share link not found")
+
+    agent = await db.get_agent_def(share["agent_name"])
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent no longer exists")
+
+    return {
+        "name": agent["name"],
+        "description": agent.get("description", ""),
+        "tools": list(agent.get("tools") or []),
+        "mcp_servers": list(agent.get("mcp_servers") or []),
+        "knowledge_areas": list(agent.get("knowledge_areas") or []),
+    }
+
+
 class OnboardingForm(BaseModel):
     display_name: str
 
