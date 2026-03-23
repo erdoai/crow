@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { LogOut, Key, Brain, MessageSquare, Cpu, Download, Share2, Upload, Check, Link, LayoutDashboard } from 'lucide-react'
+import { LogOut, Key, Brain, MessageSquare, Cpu, Download, Upload, Check, Link, LayoutDashboard } from 'lucide-react'
 
 export default function DashboardPage() {
   const navigate = useNavigate()
