@@ -65,7 +65,7 @@ railway up -d -s <id>   # deploy code changes to Railway
 ## Config
 
 Three config files:
-- **`crow.yml`**: agent definitions, MCP servers, auth settings. Secrets use `${VAR}` syntax resolved from environment at runtime.
+- **`crow.yml`**: agent definitions, MCP servers, auth settings, custom dashboard views. Secrets use `${VAR}` syntax resolved from environment at runtime.
 - **`scaffold.config.yml`**: declares required API keys, auto-generated secrets, and optional config. Scaffold reads this during `scaffold up` to prompt for missing keys and auto-generate secrets into `.scaffold/.env`.
 - **Environment variables** with `CROW_` prefix: database URL, API keys, port. See `.env.example`.
 
@@ -89,6 +89,38 @@ auth:
 ```
 
 When enabled: email OTP sign-in → onboarding ("what should I call you?") → dashboard with per-user conversations, knowledge, phone links, API keys. When disabled: dashboard loads directly, single-user mode.
+
+### State channel
+
+Real-time key/value store for pushing operational state to custom dashboards. State is per-user when auth is enabled, global when disabled.
+
+```bash
+# Write state
+curl -X POST /api/state/{key} -d '{"data": {"count": 42}}'
+
+# Read state
+curl /api/state/{key}
+
+# Subscribe to updates (SSE) — state changes + agent events on one stream
+curl -N /api/state/stream              # all keys
+curl -N /api/state/stream?keys=a,b     # filter by key
+```
+
+SSE events use the event type as the SSE `event:` field (`state.updated`, `message.response`, `job.completed`, etc.), so clients can filter with `addEventListener`.
+
+### Custom dashboard views
+
+Serve project-specific HTML dashboards alongside the built-in React UI. Configured in `crow.yml`:
+
+```yaml
+dashboard:
+  views:
+    trading:
+      label: Trading Floor
+      path: ./dashboards/trading    # directory with index.html + static assets
+```
+
+Views are served at `/dashboard/custom/{name}/` and require auth. The built-in dashboard header shows links to all configured views. Custom dashboards are plain HTML/JS/CSS — no React or build step required. They connect to Crow via the state channel SSE stream and standard API endpoints.
 
 ## Custom agents
 
@@ -114,5 +146,6 @@ Keep agents in a local folder (e.g. `./agents/`) and sync with `crow agents sync
 - Knowledge stored as markdown in Postgres with pgvector embeddings (PARA: Projects/Areas/Resources/Archives), scoped per-user when auth enabled.
 - Event-driven: components communicate via async event bus, not direct calls.
 - iOS app gateway for inbound messages.
-- Web dashboard served from FastAPI (Jinja2 templates + vanilla CSS/JS). Purple theme.
+- Web dashboard served from FastAPI (React SPA + Vite). Purple theme. Custom HTML dashboards served alongside via `dashboard.views` in `crow.yml`.
+- State channel (`state` table): per-user key/value store with SSE streaming. External processes push state via REST, dashboards subscribe via SSE. Agent events (message.*, job.*) piped into the same stream.
 - API keys generated from dashboard, bearer token auth for programmatic access.
