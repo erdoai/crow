@@ -8,42 +8,34 @@
 
 agents:
   pa:
-    description: "Routes inbound messages to specialist agents or handles directly"
+    description: "Routes inbound messages to the right specialist agent"
     prompt: pa_system.md.j2
     tools: [delegate_to_agent, knowledge_search]
     knowledge_areas: [routing, user-preferences]
 
-  monitor:
-    description: "Watches devbot, pilot, erdo, trading systems. Surfaces problems."
-    prompt: monitor_system.md.j2
+  assistant:
+    description: "General purpose assistant"
+    prompt: assistant_system.md.j2
     tools: [knowledge_search, knowledge_write]
-    mcp: [devbot, pilot]                          # gets all tools from these MCP servers
-    knowledge_areas: [monitoring, incidents, system-health]
+    mcp: [my-tools]
+    knowledge_areas: [general]
 
-  planner:
-    description: "Breaks down goals, coordinates work across systems."
-    prompt: planner_system.md.j2
-    tools: [knowledge_search, knowledge_write]
-    mcp: [devbot]
-    knowledge_areas: [planning, goals, coordination]
-
-  reviewer:
-    description: "Reviews PRs, code changes, agent run outputs."
-    prompt: reviewer_system.md.j2
-    tools: [knowledge_search, knowledge_write]
-    mcp: [devbot]
-    knowledge_areas: [review-standards, quality]
+  # Add more agents as needed:
+  # researcher:
+  #   description: "Deep research on topics"
+  #   prompt: researcher_system.md.j2
+  #   tools: [knowledge_search, knowledge_write]
+  #   mcp: [web-search, documents]
+  #   knowledge_areas: [research]
 
 # -- MCP Servers --
 # External tool providers. Crow connects as an HTTP client.
 # Agents with `mcp: [name]` automatically get all tools from that server.
-# Add via CLI: crow mcp add devbot http://devbot:8484/mcp
+# Add via CLI: crow mcp add my-tools http://localhost:3001/mcp
 
-mcp:
-  devbot:
-    url: http://devbot:8484/mcp
-  # pilot:
-  #   url: http://pilot:9721/mcp
+mcp: {}
+  # my-tools:
+  #   url: http://localhost:3001/mcp
   # slack:
   #   url: http://slack-mcp.railway.app/mcp
 
@@ -53,11 +45,11 @@ mcp:
 
 # auth:
 #   enabled: true
-#   session_secret: ${CROW_SESSION_SECRET}
+#   session_secret: ${SESSION_SECRET}
 #   api_key: ${CROW_API_KEY}
 #   resend:
 #     api_key: ${RESEND_API_KEY}
-#     from: "crow <noreply@erdo.ai>"
+#     from: "crow <noreply@example.com>"
 
 # -- Built-in tools reference --
 # These are always available (no MCP needed):

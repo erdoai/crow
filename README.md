@@ -1,22 +1,22 @@
 # crow
 
-The brain for your agentic systems. Crow is an agent coordination platform that monitors, plans, and acts across your autonomous systems — devbot, pilot, trading bots, whatever you run.
-
-Talk to your agents from anywhere: iMessage, a web dashboard, HTTP API, or any MCP-compatible client.
+An open-source agent coordination platform. Define AI agents in YAML, connect them to any tools via MCP, and interact through a web dashboard, HTTP API, or mobile app.
 
 ## How it works
 
 ```
-You (iMessage / API / Dashboard)
-  → PA agent (routes your message)
-    → Specialist agent (monitor, planner, reviewer, or custom)
-      → Tools (MCP servers: devbot, pilot, slack, anything)
+You (Dashboard / API / Mobile)
+  → PA agent (routes your message to the right specialist)
+    → Agent (runs with its own prompt, tools, and knowledge)
+      → Tools (built-in + any MCP server)
         → Response back to you
 ```
 
-**Server/worker architecture.** The server holds agent definitions, conversations, and a job queue. Workers poll for jobs, run Claude with the agent's tools, and report results. Close your laptop — Railway workers keep going.
+**Server/worker architecture.** The server manages agent definitions, conversations, knowledge, and a job queue. Workers poll for jobs, run Claude with the agent's configured tools, and report results. Workers can run anywhere — local machine, cloud, Railway.
 
-**One database everywhere.** Railway Postgres is the single source of truth. Local dev and prod hit the same DB. No sync, no migration drift.
+**Agents are YAML, not code.** Define agents in `crow.yml` with a prompt template, tools, and knowledge areas. No Python needed per agent.
+
+**Tools via MCP.** External tools are plugged in via [MCP](https://modelcontextprotocol.io/) servers. Crow connects as an HTTP client and discovers tools at runtime. Any MCP-compatible server works, regardless of language.
 
 ## Quickstart
 
@@ -25,18 +25,15 @@ You (iMessage / API / Dashboard)
 pip install -e .
 
 # Configure
-cp crow.yml.example crow.yml    # edit with your agents + MCP servers
+cp crow.yml.example crow.yml    # define your agents + MCP servers
 cp .env.example .env            # set DATABASE_URL, ANTHROPIC_API_KEY
-
-# Deploy infrastructure (via scaffold)
-scaffold up
 
 # Run
 crow serve                      # start server
 crow worker                     # start worker (separate terminal)
 
 # Talk to it
-crow message pa "what's devbot doing?"
+crow message pa "hello"
 ```
 
 ## Architecture
@@ -45,7 +42,7 @@ crow message pa "what's devbot doing?"
 ┌──────────────────────────────────────────────┐
 │              CROW SERVER                     │
 │  FastAPI · Postgres/pgvector · Event bus     │
-│  Gateways: iMessage, HTTP API, SSE          │
+│  Gateways: HTTP API, SSE, Web dashboard     │
 │  Agent definitions + PARA knowledge in DB    │
 └──────────────────┬───────────────────────────┘
                    │
@@ -53,7 +50,7 @@ crow message pa "what's devbot doing?"
        │                       │
 ┌──────┴──────┐   ┌────────────┴────┐
 │ WORKER      │   │ WORKER          │
-│ (local)     │   │ (Railway)       │
+│ (local)     │   │ (cloud)         │
 │ Runs Claude │   │ Runs Claude     │
 │ Calls MCP   │   │ Calls MCP       │
 └─────────────┘   └─────────────────┘
@@ -61,39 +58,41 @@ crow message pa "what's devbot doing?"
 
 ## Agents
 
-Agents are defined in `crow.yml` — no Python code needed:
+Define agents in `crow.yml`:
 
 ```yaml
 agents:
-  monitor:
-    description: "Watches devbot, pilot, trading systems"
-    prompt: monitor_system.md.j2
+  assistant:
+    description: "General purpose assistant"
+    prompt: assistant.md.j2
     tools: [knowledge_search, knowledge_write]
-    mcp: [devbot, pilot]
-    knowledge_areas: [monitoring, incidents]
+    mcp: [my-tools]
+    knowledge_areas: [general]
 ```
 
 Each agent gets:
-- A **system prompt** (Jinja2 template)
+- A **system prompt** (Jinja2 template in `crow/agents/prompts/`)
 - **Built-in tools** — `delegate_to_agent`, `knowledge_search`, `knowledge_write`, `knowledge_archive`
 - **MCP tools** — dynamically discovered from connected MCP servers
-- **PARA knowledge** — persistent learnings stored in Postgres with optional pgvector semantic search
+- **PARA knowledge** — persistent learnings in Postgres (Projects, Areas, Resources, Archives)
 
 ## MCP integration
 
-External tools are plugged in via [MCP](https://modelcontextprotocol.io/) servers. Crow connects as an HTTP client — no process spawning, no code per integration.
+Connect any MCP server to give agents new capabilities:
 
 ```bash
-# Register an MCP server
-crow mcp add devbot http://devbot:8484/mcp
-
-# Or in crow.yml
-mcp:
-  devbot:
-    url: http://devbot:8484/mcp
+crow mcp add my-tools http://localhost:3001/mcp
 ```
 
-Workers discover tools at runtime from each MCP server and pass them to Claude. Any MCP-compatible server works — doesn't matter what language it's written in.
+Or in `crow.yml`:
+
+```yaml
+mcp:
+  my-tools:
+    url: http://localhost:3001/mcp
+```
+
+Workers discover tools from each MCP server at job start and pass them to Claude alongside the built-in tools.
 
 ## Configuration
 
@@ -101,16 +100,12 @@ Workers discover tools at runtime from each MCP server and pass them to Claude. 
 
 ```bash
 crow settings import crow.yml   # reload config into DB
-crow settings export            # dump DB config as YAML
+crow settings export            # dump current config as YAML
 ```
 
 **Environment variables** — `CROW_` prefix. See [`.env.example`](.env.example).
 
-**`crow.yml` supports `${VAR}` syntax** for env var references:
-```yaml
-auth:
-  session_secret: ${SESSION_SECRET}
-```
+`crow.yml` supports **`${VAR}` syntax** for env var references.
 
 ## CLI
 
@@ -131,14 +126,13 @@ crow settings export                # export config
 
 ## Gateways
 
-- **iMessage** — FSEvents watcher on `chat.db`, sends via AppleScript. Local only.
-- **HTTP API** — `POST /messages` for programmatic access. Works everywhere.
-- **SSE** — real-time streaming for web/mobile clients.
-- **Dashboard** — built-in web UI for conversations and status.
+- **HTTP API** — `POST /messages` for programmatic access
+- **SSE** — real-time streaming for web and mobile clients
+- **Web dashboard** — built-in UI for conversations and status
 
 ## Knowledge (PARA)
 
-Agents build up persistent knowledge using the [PARA method](https://fortelabs.com/blog/para/):
+Agents build persistent knowledge using the [PARA method](https://fortelabs.com/blog/para/):
 
 | Category | Purpose |
 |----------|---------|
@@ -147,11 +141,13 @@ Agents build up persistent knowledge using the [PARA method](https://fortelabs.c
 | **Resources** | Reference material |
 | **Archives** | Completed or deprecated items |
 
-Knowledge is stored as markdown in Postgres. With pgvector enabled, agents can search semantically. Without it, keyword search still works.
+Stored as markdown in Postgres. With pgvector enabled, agents can search semantically. Without it, keyword search works.
 
 ## Deployment
 
-Crow deploys to Railway via [scaffold](docs/scaffold-plan.md):
+Docker image published to `ghcr.io/erdoai/crow` on every push to main.
+
+Deploy with [scaffold](docs/scaffold-plan.md) or any Docker-compatible platform:
 
 ```yaml
 # scaffold.yml
@@ -168,10 +164,20 @@ databases:
   postgres:
     provider: railway
     plugin: postgres
-    extensions: [pgvector]
 ```
 
-Docker image published to `ghcr.io/erdoai/crow` on every push to main.
+## Auth (optional)
+
+Email-based authentication with magic codes via Resend. API key auth for programmatic access. Disabled by default.
+
+```yaml
+# crow.yml
+auth:
+  enabled: true
+  session_secret: ${SESSION_SECRET}
+  resend:
+    api_key: ${RESEND_API_KEY}
+```
 
 ## Tech stack
 
@@ -181,7 +187,6 @@ Docker image published to `ghcr.io/erdoai/crow` on every push to main.
 - Anthropic SDK (Claude)
 - MCP SDK (tool integration)
 - Typer + Rich (CLI)
-- watchdog (iMessage gateway)
 
 ## License
 
