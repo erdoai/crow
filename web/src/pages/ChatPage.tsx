@@ -132,9 +132,11 @@ export default function ChatPage() {
             <div className="px-6 py-3 border-b bg-card font-semibold text-sm">
               {threadId}
             </div>
-            <AssistantRuntimeProvider runtime={runtime}>
-              <Thread />
-            </AssistantRuntimeProvider>
+            <div className="flex-1 min-h-0">
+              <AssistantRuntimeProvider runtime={runtime}>
+                <Thread />
+              </AssistantRuntimeProvider>
+            </div>
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground">

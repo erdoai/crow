@@ -67,18 +67,29 @@ class Database:
         return dict(row) if row else None
 
     async def list_conversations(
-        self, limit: int = 50, user_id: str | None = None
+        self,
+        limit: int = 50,
+        user_id: str | None = None,
+        exclude_delegates: bool = False,
     ) -> list[dict]:
+        conditions = []
+        params: list = []
+        idx = 1
+
         if user_id:
-            rows = await self._pool.fetch(
-                "SELECT * FROM conversations WHERE user_id = $1 ORDER BY updated_at DESC LIMIT $2",
-                user_id,
-                limit,
-            )
-        else:
-            rows = await self._pool.fetch(
-                "SELECT * FROM conversations ORDER BY updated_at DESC LIMIT $1", limit
-            )
+            conditions.append(f"user_id = ${idx}")
+            params.append(user_id)
+            idx += 1
+
+        if exclude_delegates:
+            conditions.append(f"gateway_thread_id NOT LIKE ${idx}")
+            params.append("delegate-%")
+            idx += 1
+
+        where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+        params.append(limit)
+        query = f"SELECT * FROM conversations{where} ORDER BY updated_at DESC LIMIT ${idx}"
+        rows = await self._pool.fetch(query, *params)
         return [dict(r) for r in rows]
 
     # -- Messages --
@@ -115,7 +126,7 @@ class Database:
         rows = await self._pool.fetch(
             """SELECT * FROM messages
                WHERE conversation_id = $1
-               ORDER BY created_at ASC
+               ORDER BY seq ASC, created_at ASC
                LIMIT $2""",
             conversation_id,
             limit,

@@ -1,5 +1,6 @@
 """Agent executor — runs a single agent job using the Anthropic API."""
 
+import asyncio
 import json
 import logging
 from pathlib import Path
@@ -163,23 +164,46 @@ async def execute_builtin(
     server_url: str,
     worker_key: str,
     job: dict,
+    settings: "Settings | None" = None,
 ) -> str:
     """Execute a built-in tool."""
     headers = {"x-worker-key": worker_key}
 
     if tool_name == "delegate_to_agent":
+        # Run delegate agent inline — no separate job/conversation.
+        agent_name = tool_input["agent_name"]
+        task = tool_input["task"]
         async with httpx.AsyncClient() as client:
-            await client.post(
-                f"{server_url}/messages",
-                json={
-                    "text": tool_input["task"],
-                    "thread_id": (
-                        f"delegate-{job.get('conversation_id', 'none')}"
-                    ),
-                },
+            resp = await client.get(
+                f"{server_url}/agents/{agent_name}",
+                headers=headers,
                 timeout=10,
             )
-        return f"Delegated to {tool_input['agent_name']}: job created."
+            if resp.status_code != 200:
+                return f"Agent '{agent_name}' not found."
+            agent_def = resp.json()
+
+        delegate_job_data = {
+            "job": {
+                "agent_name": agent_name,
+                "input": task,
+                "conversation_id": job.get("conversation_id"),
+            },
+            "agent": {
+                "name": agent_def["name"],
+                "description": agent_def.get("description", ""),
+                "prompt_template": agent_def.get("prompt_template", ""),
+                "tools": list(agent_def.get("tools") or []),
+                "knowledge_areas": list(agent_def.get("knowledge_areas") or []),
+            },
+            "messages": [],  # fresh context for delegate
+            "knowledge": [],
+            "mcp_servers": [],
+        }
+        output, _tokens = await run_agent(
+            delegate_job_data, settings, server_url, worker_key
+        )
+        return f"[{agent_name}] {output}"
 
     elif tool_name == "knowledge_search":
         async with httpx.AsyncClient() as client:
@@ -392,12 +416,11 @@ async def run_agent(
                     ],
                 })
 
-                tool_results = []
-                for block in response.content:
-                    if block.type != "tool_use":
-                        continue
+                tool_blocks = [
+                    b for b in response.content if b.type == "tool_use"
+                ]
 
-                    # Dispatch: built-in or MCP?
+                async def _exec_tool(block):
                     if block.name in BUILTIN_TOOLS:
                         result = await execute_builtin(
                             block.name,
@@ -405,9 +428,9 @@ async def run_agent(
                             server_url,
                             worker_key,
                             job,
+                            settings=settings,
                         )
                     else:
-                        # Try MCP connections
                         result = None
                         for conn in mcp_connections:
                             if conn.has_tool(block.name):
@@ -419,12 +442,15 @@ async def run_agent(
                             result = json.dumps(
                                 {"error": f"Unknown tool: {block.name}"}
                             )
-
-                    tool_results.append({
+                    return {
                         "type": "tool_result",
                         "tool_use_id": block.id,
                         "content": result,
-                    })
+                    }
+
+                tool_results = await asyncio.gather(
+                    *[_exec_tool(b) for b in tool_blocks]
+                )
 
                 api_messages.append(
                     {"role": "user", "content": tool_results}

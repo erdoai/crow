@@ -111,7 +111,7 @@ async def dashboard_data(request: Request):
 
     agents = await db.list_agent_defs()
     conversations = await db.list_conversations(
-        limit=10, user_id=user["id"] if auth_enabled else None
+        limit=10, user_id=user["id"] if auth_enabled else None, exclude_delegates=True
     )
     knowledge = await db.search_knowledge(
         user_id=user["id"] if auth_enabled else None, limit=20
