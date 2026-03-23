@@ -3,10 +3,11 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "crow"
+name = "crow-agents"
 dynamic = ["version"]
 description = "Agent coordination and monitoring system"
-license = "FCL-1.0-ALv2"
+readme = "README.md"
+license = "LicenseRef-FCL-1.0-ALv2"
 requires-python = ">=3.11"
 dependencies = [
     "anthropic>=0.40,<1",
@@ -23,6 +24,7 @@ dependencies = [
     "typer>=0.12,<1",
     "uvicorn>=0.30,<1",
     "watchdog>=4,<5",
+    "python-dotenv>=1,<2",
 ]
 
 [project.optional-dependencies]
@@ -34,6 +36,9 @@ dev = [
 
 [project.scripts]
 crow = "crow.cli.main:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["crow"]
 
 [tool.hatch.version]
 path = "crow/__version__.py"

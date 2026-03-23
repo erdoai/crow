@@ -23,35 +23,70 @@ Server/worker model:
 - Jinja2 (prompt templates + web dashboard)
 - watchdog (iMessage FSEvents gateway)
 
+## Install
+
+Published as `crow-agents` on PyPI (the `crow` name was taken). CLI command is still `crow`.
+
+```bash
+pip install crow-agents          # from PyPI
+pip install git+https://github.com/erdoai/crow.git  # from source
+```
+
 ## Commands
 
 ```bash
-crow serve              # start server
-crow worker             # start worker (polls server for jobs)
-crow message <agent> "text"  # send a test message
-crow status             # system status
-crow jobs               # list jobs
+crow init                       # bootstrap new project (crow.yml, .env, agents/)
+crow serve                      # start server
+crow worker                     # start worker (polls server for jobs)
+crow message <agent> "text"     # send a test message
+crow status                     # system status
+crow jobs                       # list jobs
 
 # Agent management
-crow agents sync ./agents   # sync local agent .md files to server
-crow agents export ./agents # export all agents from server as .md files
+crow agents sync ./agents       # sync local agent .md files to server
+crow agents export ./agents     # export all agents from server as .md files
 
 # MCP servers
-crow mcp add NAME URL       # add MCP server
-crow mcp list               # list MCP servers
-crow mcp remove NAME        # remove MCP server
+crow mcp add NAME URL           # add MCP server
+crow mcp list                   # list MCP servers
+crow mcp remove NAME            # remove MCP server
 ```
 
-## Development
+## Using crow in another project
+
+No need to clone this repo. Install and init:
 
 ```bash
-pip install -e ".[dev]" # install with dev deps
-# Set CROW_DATABASE_URL to your Railway Postgres URL (from scaffold)
-crow serve              # start server on :8100
-crow worker             # start worker in another terminal
-ruff check .            # lint
-pytest                  # test
+pip install crow-agents
+crow init                          # creates crow.yml, .env, agents/
+# edit .env — set CROW_DATABASE_URL and CROW_ANTHROPIC_API_KEY
+crow serve                         # start server on :8100
+crow worker                        # start worker in another terminal
+crow agents sync ./agents          # push your agent .md files to server
 ```
+
+`crow init` generates:
+- **`crow.yml`** — config template with agents, MCP, and auth sections
+- **`.env`** — with auto-generated secrets (SESSION_SECRET, CROW_API_KEY, CROW_WORKER_API_KEY). You fill in CROW_DATABASE_URL and CROW_ANTHROPIC_API_KEY.
+- **`.gitignore`** — ensures .env is not committed
+- **`agents/hello.md`** — sample agent to get started
+
+## Development (contributing to crow itself)
+
+```bash
+git clone https://github.com/erdoai/crow.git
+cd crow
+pip install -e ".[dev]"         # install with dev deps
+# Set CROW_DATABASE_URL to your Railway Postgres URL (from scaffold)
+crow serve                      # start server on :8100
+crow worker                     # start worker in another terminal
+ruff check .                    # lint
+pytest                          # test
+```
+
+## Publishing
+
+Package is `crow-agents` on PyPI. Publishing happens automatically via GitHub Actions when a release is created. The workflow uses PyPI trusted publishing (no API token needed).
 
 ## Deployment
 

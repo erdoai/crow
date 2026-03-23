@@ -8,6 +8,7 @@ import uvicorn
 from rich.console import Console
 from rich.table import Table
 
+from crow.cli.init import init_project
 from crow.config.settings import Settings
 
 app = typer.Typer(
@@ -16,6 +17,7 @@ app = typer.Typer(
 agents_app = typer.Typer(help="Manage agent definitions.")
 mcp_app = typer.Typer(help="Manage MCP servers.")
 settings_app = typer.Typer(help="Import/export config.")
+app.command("init")(init_project)
 app.add_typer(agents_app, name="agents")
 app.add_typer(mcp_app, name="mcp")
 app.add_typer(settings_app, name="settings")

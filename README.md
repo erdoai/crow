@@ -22,18 +22,25 @@ You (Dashboard / API / Mobile)
 
 ```bash
 # Install
-pip install -e .
+pip install crow-agents
 
-# Configure
-cp crow.yml.example crow.yml    # define your agents + MCP servers
-cp .env.example .env            # set DATABASE_URL, ANTHROPIC_API_KEY
+# Initialize a new project
+crow init
+# edit .env — set CROW_DATABASE_URL and CROW_ANTHROPIC_API_KEY
 
 # Run
 crow serve                      # start server
 crow worker                     # start worker (separate terminal)
 
-# Talk to it
-crow message pa "hello"
+# Sync your agents and talk to them
+crow agents sync ./agents
+crow message hello "hi there"
+```
+
+Or install from source:
+
+```bash
+pip install git+https://github.com/erdoai/crow.git
 ```
 
 ## Architecture
@@ -141,6 +148,7 @@ crow settings export            # dump current config as YAML
 ## CLI
 
 ```bash
+crow init                              # initialize new project
 crow serve                          # start server
 crow worker --url http://...        # start worker
 crow message <agent> "text"         # send a message
