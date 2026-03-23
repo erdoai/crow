@@ -48,6 +48,9 @@ def worker(
     logging.basicConfig(level=logging.INFO, format=LOG_FMT)
     from crow.worker.loop import worker_loop
 
+    # Ensure URL has a protocol — Railway internal URLs often lack one
+    if not server_url.startswith(("http://", "https://")):
+        server_url = f"https://{server_url}"
     settings = Settings()
     asyncio.run(worker_loop(server_url, settings))
 
