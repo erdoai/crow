@@ -1,7 +1,67 @@
+import re
+import secrets
+from pathlib import Path
+
+import yaml
 from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 router = APIRouter()
+
+PROMPTS_DIR = Path(__file__).parent.parent.parent / "agents" / "prompts"
+
+
+def _resolve_prompt_content(prompt_template: str) -> str:
+    """Read prompt template file content, or return as-is if inline."""
+    if prompt_template.endswith(".j2"):
+        path = PROMPTS_DIR / prompt_template
+        if path.exists():
+            return path.read_text()
+    return prompt_template
+
+
+def _agent_to_markdown(agent: dict) -> str:
+    """Serialize an agent definition to markdown with YAML frontmatter."""
+    prompt_content = _resolve_prompt_content(agent["prompt_template"])
+    frontmatter = {
+        "name": agent["name"],
+        "description": agent["description"],
+    }
+    if agent.get("tools"):
+        frontmatter["tools"] = list(agent["tools"])
+    if agent.get("mcp_servers"):
+        frontmatter["mcp_servers"] = list(agent["mcp_servers"])
+    if agent.get("knowledge_areas"):
+        frontmatter["knowledge_areas"] = list(agent["knowledge_areas"])
+
+    fm_str = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False).strip()
+    return f"---\n{fm_str}\n---\n\n{prompt_content}"
+
+
+def _markdown_to_agent(content: str) -> dict:
+    """Parse a markdown agent file (YAML frontmatter + prompt body)."""
+    match = re.match(r"^---\s*\n(.+?)\n---\s*\n(.*)$", content, re.DOTALL)
+    if not match:
+        raise ValueError("Invalid agent file: missing YAML frontmatter (---)")
+
+    frontmatter = yaml.safe_load(match.group(1))
+    prompt = match.group(2).strip()
+
+    if not frontmatter or "name" not in frontmatter:
+        raise ValueError("Invalid agent file: frontmatter must include 'name'")
+
+    return {
+        "name": frontmatter["name"],
+        "description": frontmatter.get("description", ""),
+        "prompt_template": prompt,
+        "tools": frontmatter.get("tools", []),
+        "mcp_servers": frontmatter.get("mcp_servers", []),
+        "knowledge_areas": frontmatter.get("knowledge_areas", []),
+    }
+
+
+# -- CRUD --
 
 
 @router.get("/agents")
@@ -54,6 +114,81 @@ async def delete_agent(name: str, request: Request):
         raise HTTPException(status_code=404, detail="Agent not found")
     await db.delete_agent_def(name)
     return {"status": "deleted", "name": name}
+
+
+# -- Export / Import --
+
+
+@router.get("/agents/{name}/export")
+async def export_agent(name: str, request: Request):
+    """Export a single agent as markdown with YAML frontmatter."""
+    db = request.app.state.db
+    agent = await db.get_agent_def(name)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    md = _agent_to_markdown(agent)
+    return PlainTextResponse(
+        md,
+        media_type="text/markdown",
+        headers={"Content-Disposition": f'attachment; filename="{name}.md"'},
+    )
+
+
+@router.post("/agents/import")
+async def import_agent(request: Request):
+    """Import an agent from markdown (YAML frontmatter + prompt body)."""
+    body = await request.body()
+    content = body.decode("utf-8")
+
+    try:
+        agent_data = _markdown_to_agent(content)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    db = request.app.state.db
+    await db.upsert_agent_def(
+        name=agent_data["name"],
+        description=agent_data["description"],
+        prompt_template=agent_data["prompt_template"],
+        tools=agent_data["tools"],
+        mcp_servers=agent_data["mcp_servers"],
+        knowledge_areas=agent_data["knowledge_areas"],
+    )
+    return {"status": "imported", "name": agent_data["name"]}
+
+
+# -- Share links --
+
+
+@router.post("/agents/{name}/share")
+async def create_share_link(name: str, request: Request):
+    """Create (or return existing) share link for an agent."""
+    db = request.app.state.db
+    agent = await db.get_agent_def(name)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    existing = await db.get_agent_share(name)
+    if existing:
+        base = str(request.base_url).rstrip("/")
+        return {"token": existing["token"], "url": f"{base}/shared/{existing['token']}"}
+
+    token = secrets.token_urlsafe(16)
+    await db.create_agent_share(name, token)
+    base = str(request.base_url).rstrip("/")
+    return {"token": token, "url": f"{base}/shared/{token}"}
+
+
+@router.delete("/agents/{name}/share")
+async def revoke_share_link(name: str, request: Request):
+    """Revoke a share link for an agent."""
+    db = request.app.state.db
+    await db.delete_agent_share(name)
+    return {"status": "revoked", "name": name}
+
+
+# -- Knowledge --
 
 
 @router.get("/agents/{name}/knowledge")

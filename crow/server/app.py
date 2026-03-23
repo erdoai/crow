@@ -78,13 +78,13 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(title="crow", lifespan=lifespan)
 
-    # Legacy static files (templates CSS/JS)
-    static_dir = Path(__file__).parent / "static"
-    app.mount("/static", StaticFiles(directory=static_dir), name="static")
-
     # SPA static assets (Vite build output)
     if (SPA_DIR / "assets").exists():
-        app.mount("/assets", StaticFiles(directory=SPA_DIR / "assets"), name="spa-assets")
+        app.mount(
+            "/assets",
+            StaticFiles(directory=SPA_DIR / "assets"),
+            name="spa-assets",
+        )
 
     # API routes
     app.include_router(health.router)
@@ -96,7 +96,7 @@ def create_app() -> FastAPI:
     app.include_router(workers.router)
     app.include_router(config.router)
 
-    # Auth + dashboard
+    # Auth + dashboard JSON APIs
     app.include_router(auth.api_router)  # /api/me
     app.include_router(auth.router)      # /auth/*
     app.include_router(dashboard.router)
@@ -105,14 +105,12 @@ def create_app() -> FastAPI:
     if SPA_DIR.exists():
         @app.get("/{full_path:path}")
         async def spa_catch_all(request: Request, full_path: str):
-            # If the path matches a file in dist/, serve it directly
             file_path = SPA_DIR / full_path
             if full_path and file_path.is_file():
                 return FileResponse(file_path)
-            # Otherwise serve index.html for client-side routing
             return FileResponse(SPA_DIR / "index.html")
 
-    # Auth middleware — enforces authentication on all routes not in the allowlist
+    # Auth middleware
     app.add_middleware(AuthMiddleware)
 
     return app
