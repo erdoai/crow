@@ -15,18 +15,6 @@ function showStatus(msg) {
     if (el) { el.textContent = msg; el.classList.remove('hidden'); }
 }
 
-/* Enter key on inputs */
-document.addEventListener('DOMContentLoaded', () => {
-    const emailInput = document.getElementById('email-input');
-    if (emailInput) emailInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendCode(); });
-
-    const nameInput = document.getElementById('name-input');
-    if (nameInput) nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitOnboarding(); });
-
-    const keyNameInput = document.getElementById('key-name-input');
-    if (keyNameInput) keyNameInput.addEventListener('keydown', e => { if (e.key === 'Enter') createApiKey(); });
-});
-
 /* OTP auto-advance */
 document.querySelectorAll('.otp-digit').forEach(input => {
     input.addEventListener('input', e => {
@@ -43,7 +31,6 @@ document.querySelectorAll('.otp-digit').forEach(input => {
             const prev = document.querySelector(`.otp-digit[data-idx="${idx - 1}"]`);
             if (prev) { prev.focus(); prev.value = ''; }
         }
-        if (e.key === 'Enter') verifyCode();
     });
     input.addEventListener('paste', e => {
         e.preventDefault();

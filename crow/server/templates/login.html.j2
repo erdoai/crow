@@ -6,12 +6,12 @@
         <h1 class="auth-logo">crow</h1>
         <p class="auth-subtitle">sign in to continue</p>
 
-        <div id="email-step">
+        <form id="email-step" onsubmit="sendCode(); return false;">
             <input type="email" id="email-input" class="input" placeholder="your email" autocomplete="email" autofocus>
-            <button class="btn btn-primary" onclick="sendCode()">send code</button>
-        </div>
+            <button type="submit" class="btn btn-primary">send code</button>
+        </form>
 
-        <div id="code-step" class="hidden">
+        <form id="code-step" class="hidden" onsubmit="verifyCode(); return false;">
             <p class="code-label">enter the 6-digit code sent to <span id="code-email"></span></p>
             <div class="otp-inputs">
                 <input type="text" maxlength="1" inputmode="numeric" class="otp-digit" data-idx="0">
@@ -21,9 +21,9 @@
                 <input type="text" maxlength="1" inputmode="numeric" class="otp-digit" data-idx="4">
                 <input type="text" maxlength="1" inputmode="numeric" class="otp-digit" data-idx="5">
             </div>
-            <button class="btn btn-primary" onclick="verifyCode()">verify</button>
-            <button class="btn btn-ghost" onclick="backToEmail()">use a different email</button>
-        </div>
+            <button type="submit" class="btn btn-primary">verify</button>
+            <button type="button" class="btn btn-ghost" onclick="backToEmail()">use a different email</button>
+        </form>
 
         <p id="auth-error" class="error hidden"></p>
         <p id="auth-status" class="status hidden"></p>

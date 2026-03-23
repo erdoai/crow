@@ -50,10 +50,10 @@
             </div>
             {% endif %}
             <div id="new-key-result" class="hidden key-result"></div>
-            <div class="inline-form">
+            <form class="inline-form" onsubmit="createApiKey(); return false;">
                 <input type="text" id="key-name-input" class="input input-sm" placeholder="key name">
-                <button class="btn btn-secondary btn-sm" onclick="createApiKey()">create key</button>
-            </div>
+                <button type="submit" class="btn btn-secondary btn-sm">create key</button>
+            </form>
         </section>
 
         <!-- Knowledge -->
