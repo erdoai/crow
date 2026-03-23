@@ -1,4 +1,4 @@
-"""State channel — key/value store with SSE streaming."""
+"""State channel — per-user key/value store with SSE streaming."""
 
 import asyncio
 import json
@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from crow.auth.dependencies import get_current_user
 from crow.events.types import STATE_UPDATED, Event
 
 logger = logging.getLogger(__name__)
@@ -20,15 +21,26 @@ class StatePayload(BaseModel):
     data: Any
 
 
+def _user_id(user: dict | None, auth_enabled: bool) -> str | None:
+    """Resolve user_id for scoping — same pattern as dashboard/knowledge."""
+    if auth_enabled and user and user["id"] != "default":
+        return user["id"]
+    return None
+
+
 @router.post("/{key}")
 async def set_state(key: str, payload: StatePayload, request: Request):
-    """Upsert state for a key and broadcast update."""
+    """Upsert state for a key (scoped to current user) and broadcast update."""
     db = request.app.state.db
     bus = request.app.state.bus
-    row = await db.set_state(key, payload.data)
+    auth_enabled = request.app.state.auth_config.get("enabled", False)
+    user = await get_current_user(request)
+    uid = _user_id(user, auth_enabled)
+
+    row = await db.set_state(key, payload.data, user_id=uid)
     await bus.publish(Event(
         type=STATE_UPDATED,
-        data={"key": key, "data": payload.data},
+        data={"key": key, "data": payload.data, "user_id": uid},
     ))
     return {"key": row["key"], "data": row["data"], "updated_at": row["updated_at"].isoformat()}
 
@@ -38,12 +50,18 @@ async def state_stream(
     request: Request,
     keys: str | None = Query(None, description="Comma-separated state keys to filter"),
 ):
-    """SSE stream of state updates and agent events."""
+    """SSE stream of state updates (per-user) and agent events."""
     bus = request.app.state.bus
+    auth_enabled = request.app.state.auth_config.get("enabled", False)
+    user = await get_current_user(request)
+    uid = _user_id(user, auth_enabled)
+
     queue: asyncio.Queue[Event] = asyncio.Queue()
     key_filter = set(keys.split(",")) if keys else None
 
     async def on_state(event: Event) -> None:
+        if event.data.get("user_id") != uid:
+            return
         if key_filter and event.data.get("key") not in key_filter:
             return
         await queue.put(event)
@@ -86,9 +104,13 @@ async def state_stream(
 
 @router.get("/{key}")
 async def get_state(key: str, request: Request):
-    """Get current state for a key."""
+    """Get current state for a key (scoped to current user)."""
     db = request.app.state.db
-    row = await db.get_state(key)
+    auth_enabled = request.app.state.auth_config.get("enabled", False)
+    user = await get_current_user(request)
+    uid = _user_id(user, auth_enabled)
+
+    row = await db.get_state(key, user_id=uid)
     if not row:
         raise HTTPException(status_code=404, detail="Key not found")
     return {"key": row["key"], "data": row["data"], "updated_at": row["updated_at"].isoformat()}

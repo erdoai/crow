@@ -455,24 +455,31 @@ class Database:
 
     # -- State Channel --
 
-    async def set_state(self, key: str, data: dict) -> dict:
+    async def set_state(
+        self, key: str, data: dict, user_id: str | None = None
+    ) -> dict:
         import json
 
         data_json = json.dumps(data)
         row = await self._pool.fetchrow(
-            """INSERT INTO state (key, data, updated_at)
-               VALUES ($1, $2::jsonb, NOW())
-               ON CONFLICT (key) DO UPDATE SET
-                 data = $2::jsonb, updated_at = NOW()
+            """INSERT INTO state (key, user_id, data, updated_at)
+               VALUES ($1, $2, $3::jsonb, NOW())
+               ON CONFLICT (key, user_id) DO UPDATE SET
+                 data = $3::jsonb, updated_at = NOW()
                RETURNING *""",
             key,
+            user_id or "",
             data_json,
         )
         return dict(row)
 
-    async def get_state(self, key: str) -> dict | None:
+    async def get_state(
+        self, key: str, user_id: str | None = None
+    ) -> dict | None:
         row = await self._pool.fetchrow(
-            "SELECT * FROM state WHERE key = $1", key
+            "SELECT * FROM state WHERE key = $1 AND user_id = $2",
+            key,
+            user_id or "",
         )
         return dict(row) if row else None
 
