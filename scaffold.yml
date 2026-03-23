@@ -6,7 +6,7 @@ services:
     provider: railway
     runtime: python
     source: .
-    start: "crow serve --port $PORT"
+    start: "crow serve"
     health_check: /healthz
     env:
       CROW_DATABASE_URL: "${{postgres.url}}"
@@ -14,6 +14,7 @@ services:
       CROW_WORKER_API_KEY: "${{env.WORKER_API_KEY}}"
       CROW_DEVBOT_URL: "${{env.DEVBOT_URL}}"
       CROW_PILOT_URL: "${{env.PILOT_URL}}"
+      CROW_PORT: "8100"
       CROW_IMESSAGE_ENABLED: "false"
       SESSION_SECRET: "${{env.SESSION_SECRET}}"
       RESEND_API_KEY: "${{env.RESEND_API_KEY}}"

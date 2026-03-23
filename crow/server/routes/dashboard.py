@@ -36,7 +36,7 @@ async def login_page(request: Request):
     if user and user["id"] != "default":
         return RedirectResponse(url="/dashboard", status_code=303)
 
-    return templates.TemplateResponse("login.html.j2", {"request": request})
+    return templates.TemplateResponse(request, "login.html.j2")
 
 
 @router.get("/onboarding", response_class=HTMLResponse)
@@ -47,7 +47,7 @@ async def onboarding_page(request: Request):
         return RedirectResponse(url="/login", status_code=303)
     if user.get("display_name"):
         return RedirectResponse(url="/dashboard", status_code=303)
-    return templates.TemplateResponse("onboarding.html.j2", {"request": request, "user": user})
+    return templates.TemplateResponse(request, "onboarding.html.j2", {"user": user})
 
 
 class OnboardingForm(BaseModel):
@@ -101,9 +101,9 @@ async def dashboard_page(request: Request):
     display_name = user.get("display_name") or "User"
 
     return templates.TemplateResponse(
+        request,
         "dashboard.html.j2",
         {
-            "request": request,
             "user": user,
             "display_name": display_name,
             "auth_enabled": auth_enabled,
