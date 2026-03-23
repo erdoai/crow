@@ -26,7 +26,7 @@ mcp: {}
   #     Authorization: "Bearer ${SEARCH_API_KEY}"
 
 auth:
-  enabled: false
+  enabled: true
   session_secret: ${SESSION_SECRET}
   api_key: ${CROW_API_KEY}
 """

@@ -33,7 +33,7 @@ async def set_state(key: str, payload: StatePayload, request: Request):
     """Upsert state for a key (scoped to current user) and broadcast update."""
     db = request.app.state.db
     bus = request.app.state.bus
-    auth_enabled = request.app.state.auth_config.get("enabled", False)
+    auth_enabled = request.app.state.auth_config.get("enabled", True)
     user = await get_current_user(request)
     uid = _user_id(user, auth_enabled)
 
@@ -52,7 +52,7 @@ async def state_stream(
 ):
     """SSE stream of state updates (per-user) and agent events."""
     bus = request.app.state.bus
-    auth_enabled = request.app.state.auth_config.get("enabled", False)
+    auth_enabled = request.app.state.auth_config.get("enabled", True)
     user = await get_current_user(request)
     uid = _user_id(user, auth_enabled)
 
@@ -106,7 +106,7 @@ async def state_stream(
 async def get_state(key: str, request: Request):
     """Get current state for a key (scoped to current user)."""
     db = request.app.state.db
-    auth_enabled = request.app.state.auth_config.get("enabled", False)
+    auth_enabled = request.app.state.auth_config.get("enabled", True)
     user = await get_current_user(request)
     uid = _user_id(user, auth_enabled)
 

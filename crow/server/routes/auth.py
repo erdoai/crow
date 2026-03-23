@@ -28,7 +28,7 @@ async def get_me(request: Request):
         "id": user["id"],
         "email": user.get("email", ""),
         "display_name": user.get("display_name"),
-        "auth_enabled": auth_config.get("enabled", False),
+        "auth_enabled": auth_config.get("enabled", True),
     }
 
 CODE_EXPIRY_MINUTES = 10
@@ -49,7 +49,7 @@ class VerifyRequest(BaseModel):
 async def send_code(req: SendCodeRequest, request: Request):
     """Generate and send a 6-digit verification code."""
     auth_config = request.app.state.auth_config
-    if not auth_config.get("enabled", False):
+    if not auth_config.get("enabled", True):
         raise HTTPException(status_code=404)
 
     db = request.app.state.db
@@ -72,7 +72,7 @@ async def send_code(req: SendCodeRequest, request: Request):
 async def verify(req: VerifyRequest, request: Request):
     """Verify email code and create session."""
     auth_config = request.app.state.auth_config
-    if not auth_config.get("enabled", False):
+    if not auth_config.get("enabled", True):
         raise HTTPException(status_code=404)
 
     db = request.app.state.db

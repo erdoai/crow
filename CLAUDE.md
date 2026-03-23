@@ -149,7 +149,7 @@ dashboard:
       label: Trading Floor
       path: ./dashboards/trading      # file-based: directory with index.html + assets
 
-# Auth (optional — disabled by default)
+# Auth (enabled by default)
 auth:
   enabled: true
   session_secret: ${SESSION_SECRET}

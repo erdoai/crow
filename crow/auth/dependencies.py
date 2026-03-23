@@ -23,7 +23,7 @@ async def get_current_user(request: Request) -> dict | None:
     """Resolve current user from bearer token, session cookie, or default."""
     db: Database = request.app.state.db
     auth_config: dict = request.app.state.auth_config
-    auth_enabled = auth_config.get("enabled", False)
+    auth_enabled = auth_config.get("enabled", True)
 
     # 1. Check Authorization header (bearer token)
     auth_header = request.headers.get("authorization", "")
@@ -63,7 +63,7 @@ async def require_user(request: Request) -> dict | RedirectResponse:
         return user
 
     auth_config: dict = request.app.state.auth_config
-    auth_enabled = auth_config.get("enabled", False)
+    auth_enabled = auth_config.get("enabled", True)
 
     # If bearer token was provided but invalid, 401
     if request.headers.get("authorization", "").startswith("Bearer "):

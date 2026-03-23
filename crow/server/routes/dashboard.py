@@ -102,7 +102,7 @@ async def dashboard_data(request: Request):
     """Return dashboard data as JSON for the SPA."""
     user = await get_current_user(request)
     auth_config = request.app.state.auth_config
-    auth_enabled = auth_config.get("enabled", False)
+    auth_enabled = auth_config.get("enabled", True)
 
     if not user:
         raise HTTPException(status_code=401)

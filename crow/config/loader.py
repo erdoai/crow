@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 _ENV_VAR_RE = re.compile(r"\$\{([^}]+)\}")
 
 AUTH_DEFAULTS: dict[str, Any] = {
-    "enabled": False,
+    "enabled": True,
     "session_secret": "dev-secret-change-in-prod",
     "api_key": "",
     "resend": {
