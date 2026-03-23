@@ -23,6 +23,7 @@ from crow.server.routes import (
     health,
     jobs,
     messages,
+    stream,
     workers,
 )
 
@@ -88,6 +89,7 @@ def create_app() -> FastAPI:
     app.include_router(messages.router)
     app.include_router(agents.router)
     app.include_router(conversations.router)
+    app.include_router(stream.router)
     app.include_router(jobs.router)
     app.include_router(workers.router)
     app.include_router(config.router)

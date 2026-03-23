@@ -132,6 +132,7 @@ async def report_result(
                     data={
                         "gateway": conv["gateway"],
                         "gateway_thread_id": conv["gateway_thread_id"],
+                        "conversation_id": job["conversation_id"],
                         "text": result.output,
                         "agent_name": job["agent_name"],
                     },

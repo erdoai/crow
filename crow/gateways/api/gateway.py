@@ -25,17 +25,20 @@ class APIGateway(Gateway):
         # API gateway doesn't push responses — callers poll or use SSE
         pass
 
-    async def handle_inbound(self, gateway_thread_id: str, text: str) -> None:
+    async def handle_inbound(
+        self,
+        gateway_thread_id: str,
+        text: str,
+        agent: str | None = None,
+    ) -> None:
         """Called by the FastAPI route."""
         if not self._bus:
             return
-        await self._bus.publish(
-            Event(
-                type=MESSAGE_INBOUND,
-                data={
-                    "gateway": "api",
-                    "gateway_thread_id": gateway_thread_id,
-                    "text": text,
-                },
-            )
-        )
+        data: dict[str, str] = {
+            "gateway": "api",
+            "gateway_thread_id": gateway_thread_id,
+            "text": text,
+        }
+        if agent:
+            data["agent"] = agent
+        await self._bus.publish(Event(type=MESSAGE_INBOUND, data=data))

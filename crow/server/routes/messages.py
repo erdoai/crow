@@ -7,6 +7,7 @@ router = APIRouter()
 class InboundMessage(BaseModel):
     text: str
     thread_id: str = "default"
+    agent: str | None = None
 
 
 @router.post("/messages")
@@ -16,5 +17,6 @@ async def inbound_message(msg: InboundMessage, request: Request):
     await api_gateway.handle_inbound(
         gateway_thread_id=msg.thread_id,
         text=msg.text,
+        agent=msg.agent,
     )
     return {"status": "accepted", "thread_id": msg.thread_id}

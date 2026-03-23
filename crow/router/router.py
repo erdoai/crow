@@ -36,15 +36,18 @@ class Router:
             content=text,
         )
 
-        # Create a job for the PA agent — it will decide how to route
+        # Route to specific agent if requested, otherwise PA decides
+        agent_name = event.data.get("agent", "pa")
+
         job_id = await self.db.create_job(
-            agent_name="pa",
+            agent_name=agent_name,
             input_text=text,
             conversation_id=conversation["id"],
         )
 
         logger.info(
-            "Routed message to PA agent: job=%s conversation=%s",
+            "Routed message to %s agent: job=%s conversation=%s",
+            agent_name,
             job_id,
             conversation["id"],
         )
@@ -54,7 +57,7 @@ class Router:
                 type=JOB_CREATED,
                 data={
                     "job_id": job_id,
-                    "agent_name": "pa",
+                    "agent_name": agent_name,
                     "conversation_id": conversation["id"],
                     "text": text,
                 },

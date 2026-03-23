@@ -1,0 +1,56 @@
+"""SSE streaming — clients subscribe to real-time conversation updates."""
+
+import asyncio
+import json
+import logging
+
+from fastapi import APIRouter, Request
+from fastapi.responses import StreamingResponse
+
+from crow.events.types import MESSAGE_RESPONSE, Event
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+@router.get("/conversations/{conversation_id}/stream")
+async def stream_conversation(conversation_id: str, request: Request):
+    """SSE stream of new messages in a conversation."""
+    bus = request.app.state.bus
+    queue: asyncio.Queue[Event] = asyncio.Queue()
+
+    async def handler(event: Event) -> None:
+        if event.data.get("conversation_id") == conversation_id:
+            await queue.put(event)
+
+    bus.subscribe(MESSAGE_RESPONSE, handler)
+
+    async def event_generator():
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    data = json.dumps({
+                        "text": event.data["text"],
+                        "agent_name": event.data.get("agent_name"),
+                        "timestamp": event.timestamp.isoformat(),
+                        "event_id": event.id,
+                    })
+                    yield f"id: {event.id}\nevent: message\ndata: {data}\n\n"
+                except TimeoutError:
+                    yield ": keepalive\n\n"
+        except asyncio.CancelledError:
+            pass
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
