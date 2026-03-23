@@ -24,7 +24,7 @@ services:
     provider: railway
     runtime: python
     source: .
-    start: "crow worker --url https://${{server.url}}"
+    start: "crow worker --url http://server.railway.internal:8100"
     replicas: 1
     env:
       CROW_DATABASE_URL: "${{postgres.url}}"
