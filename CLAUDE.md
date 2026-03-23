@@ -5,7 +5,7 @@ Agent coordination and monitoring system. The "brain" that orchestrates devbot, 
 ## Architecture
 
 Server/worker model:
-- **Server** (FastAPI): holds agent definitions, knowledge (PARA in pgvector), conversations, job queue. Gateways (iMessage, HTTP API) feed inbound messages.
+- **Server** (FastAPI): holds agent definitions, knowledge (PARA in pgvector), conversations, job queue. Gateways (iMessage, HTTP API) feed inbound messages. Web dashboard for auth, agent management, and API keys.
 - **Workers**: poll server for jobs, execute agent runs (Claude API calls), report results.
 - **PA agent**: top-level agent that routes all inbound messages to specialist agents.
 
@@ -17,9 +17,10 @@ Server/worker model:
 - FastAPI + uvicorn (server)
 - asyncpg + pgvector (database — Railway Postgres)
 - Anthropic SDK (Claude API)
+- PyJWT (session tokens)
 - Typer (CLI), Rich (output)
 - Pydantic + pydantic-settings (config/models)
-- Jinja2 (prompt templates)
+- Jinja2 (prompt templates + web dashboard)
 - watchdog (iMessage FSEvents gateway)
 
 ## Commands
@@ -47,17 +48,39 @@ pytest                  # test
 
 Infrastructure provisioned via [scaffold](docs/scaffold-plan.md):
 ```bash
-scaffold up             # provisions Railway Postgres + server + worker
+scaffold up             # provisions Railway Postgres + server + worker, pushes config
 scaffold dev            # runs crow locally, same Railway DB
+railway up -d -s <id>   # deploy code changes to Railway
 ```
 
 ## Config
 
-All config via environment variables with `CROW_` prefix. See `.env.example`.
+Two-layer config system:
+- **`crow.yml`** (gitignored): agent definitions, MCP servers, auth settings. Secrets use `${VAR}` syntax resolved from environment at runtime.
+- **Environment variables** with `CROW_` prefix: database URL, API keys, port. See `.env.example`.
+
+In production, `crow.yml` is delivered via the `CROW_CONFIG` env var (set by scaffold from the local file via `${{file:crow.yml}}`). The loader checks `CROW_CONFIG` first, falls back to the file.
+
+### Auth
+
+Auth is optional, configured in the `auth` section of `crow.yml`:
+```yaml
+auth:
+  enabled: true                     # false = single-user, no login
+  session_secret: ${SESSION_SECRET}
+  api_key: ${CROW_API_KEY}          # static API key (when auth disabled)
+  resend:
+    api_key: ${RESEND_API_KEY}      # email OTP via Resend
+    from: "crow <noreply@erdo.ai>"
+```
+
+When enabled: email OTP sign-in → onboarding ("what should I call you?") → dashboard with per-user conversations, knowledge, phone links, API keys. When disabled: dashboard loads directly, single-user mode.
 
 ## Key patterns
 
-- Agents are defined as: prompt template + tools + knowledge areas (see `crow/agents/definitions/`)
-- Knowledge stored as markdown in Postgres with pgvector embeddings (PARA: Projects/Areas/Resources/Archives)
-- Event-driven: components communicate via async event bus, not direct calls
-- Knowledge injected into agent context as tool_use/tool_result pairs
+- Agents defined in `crow.yml` and stored in DB (`agent_defs` table). Prompt template + tools + MCP servers + knowledge areas.
+- Knowledge stored as markdown in Postgres with pgvector embeddings (PARA: Projects/Areas/Resources/Archives), scoped per-user when auth enabled.
+- Event-driven: components communicate via async event bus, not direct calls.
+- iMessage gateway resolves phone numbers to users via `phone_links` table, falls back to allowlist.
+- Web dashboard served from FastAPI (Jinja2 templates + vanilla CSS/JS). Purple theme.
+- API keys generated from dashboard, bearer token auth for programmatic access.

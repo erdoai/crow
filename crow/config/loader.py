@@ -105,8 +105,20 @@ async def export_config(db: Database) -> dict[str, Any]:
     return {"agents": agents, "mcp": mcp}
 
 
+def _parse_yaml_string(raw_yaml: str) -> dict[str, Any]:
+    """Parse a YAML string and resolve env vars."""
+    raw = yaml.safe_load(raw_yaml) or {}
+    return _resolve_env_vars(raw)
+
+
 def load_config(config_path: str = "crow.yml") -> dict[str, Any]:
-    """Load and resolve crow.yml. Returns empty dict if file doesn't exist."""
+    """Load config from CROW_CONFIG env var or crow.yml file."""
+    # Prefer CROW_CONFIG env var (for deployments where file isn't available)
+    config_env = os.environ.get("CROW_CONFIG", "")
+    if config_env:
+        logger.info("Loading config from CROW_CONFIG env var")
+        return _parse_yaml_string(config_env)
+
     path = Path(config_path)
     if not path.exists():
         logger.info("No crow.yml found at %s", path)
@@ -115,16 +127,15 @@ def load_config(config_path: str = "crow.yml") -> dict[str, Any]:
 
 
 async def auto_import_if_empty(db: Database, config_path: str = "crow.yml") -> None:
-    """Auto-import crow.yml on first startup if DB has no agents."""
+    """Auto-import config on first startup if DB has no agents."""
     existing = await db.list_agent_defs()
     if existing:
         return
 
-    path = Path(config_path)
-    if not path.exists():
-        logger.info("No crow.yml found and no agents in DB")
+    config = load_config(config_path)
+    if not config:
+        logger.info("No config found — no agents to import")
         return
 
-    logger.info("DB empty — auto-importing from %s", path)
-    config = parse_config(path)
+    logger.info("DB empty — auto-importing config")
     await import_config(db, config)

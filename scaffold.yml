@@ -18,6 +18,7 @@ services:
       CROW_IMESSAGE_ENABLED: "false"
       SESSION_SECRET: "${{env.SESSION_SECRET}}"
       RESEND_API_KEY: "${{env.RESEND_API_KEY}}"
+      CROW_CONFIG: "${{file:crow.yml}}"
 
   worker:
     provider: railway
