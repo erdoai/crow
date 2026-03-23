@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { ArrowUp, MessageSquarePlus, Cpu } from 'lucide-react'
+import Markdown from 'react-markdown'
 import { cn } from '@/lib/utils'
 
 export default function ChatPage() {
@@ -191,12 +192,15 @@ export default function ChatPage() {
                       </div>
                     )}
                     <div className={cn(
-                      'px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap',
+                      'px-4 py-2.5 rounded-2xl text-sm leading-relaxed',
                       msg.role === 'user'
                         ? 'bg-primary text-primary-foreground rounded-br-sm'
-                        : 'bg-card border border-border rounded-bl-sm'
+                        : 'bg-card border border-border rounded-bl-sm prose prose-sm prose-neutral max-w-none'
                     )}>
-                      {msg.content}
+                      {msg.role === 'user'
+                        ? msg.content
+                        : <Markdown>{msg.content}</Markdown>
+                      }
                     </div>
                   </div>
                 ))}
