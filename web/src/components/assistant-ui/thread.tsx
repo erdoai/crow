@@ -1,0 +1,122 @@
+import {
+  ThreadPrimitive,
+  ComposerPrimitive,
+  MessagePrimitive,
+  useMessage,
+} from '@assistant-ui/react'
+import { MarkdownTextPrimitive } from '@assistant-ui/react-markdown'
+import { ArrowUp, ArrowDown, Cpu } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+
+export function Thread() {
+  return (
+    <ThreadPrimitive.Root className="flex flex-col h-full relative">
+      <ThreadPrimitive.Viewport className="flex-1 overflow-y-auto px-6 py-4">
+        <div className="max-w-3xl mx-auto flex flex-col gap-1">
+          <ThreadPrimitive.Empty>
+            <EmptyState />
+          </ThreadPrimitive.Empty>
+          <ThreadPrimitive.Messages
+            components={{
+              UserMessage,
+              AssistantMessage,
+            }}
+          />
+        </div>
+      </ThreadPrimitive.Viewport>
+
+      <ThreadScrollToBottom />
+      <Composer />
+    </ThreadPrimitive.Root>
+  )
+}
+
+function EmptyState() {
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground py-20">
+      <p>send a message to get started</p>
+    </div>
+  )
+}
+
+function UserMessage() {
+  return (
+    <MessagePrimitive.Root className="flex flex-col max-w-[70%] self-end items-end">
+      <div className="px-4 py-2.5 rounded-2xl rounded-br-sm text-sm leading-relaxed bg-primary text-primary-foreground">
+        <MessagePrimitive.Content
+          components={{ Text: ({ text }) => <>{text}</> }}
+        />
+      </div>
+    </MessagePrimitive.Root>
+  )
+}
+
+function AssistantMessage() {
+  return (
+    <MessagePrimitive.Root className="flex flex-col max-w-[70%] self-start items-start">
+      <AgentLabel />
+      <div className="px-4 py-2.5 rounded-2xl rounded-bl-sm text-sm leading-relaxed bg-card border border-border prose prose-sm prose-neutral max-w-none">
+        <MessagePrimitive.Content
+          components={{
+            Text: AssistantMessageText,
+          }}
+        />
+      </div>
+    </MessagePrimitive.Root>
+  )
+}
+
+function AgentLabel() {
+  const agentName = useMessage(
+    (m) => (m.metadata?.custom as Record<string, unknown> | undefined)?.agentName as string | undefined,
+  )
+  if (!agentName) return null
+
+  return (
+    <div className="flex items-center gap-1 text-xs text-muted-foreground mb-0.5 pl-3">
+      <Cpu className="h-3 w-3" />
+      {agentName}
+    </div>
+  )
+}
+
+function AssistantMessageText() {
+  return <MarkdownTextPrimitive />
+}
+
+function Composer() {
+  return (
+    <ComposerPrimitive.Root className="px-6 py-3 border-t bg-card flex gap-2 items-end">
+      <ComposerPrimitive.Input
+        placeholder="Message..."
+        autoFocus
+        className={cn(
+          'flex-1 rounded-full border border-input bg-background px-4 py-2 text-sm',
+          'placeholder:text-muted-foreground',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+          'disabled:cursor-not-allowed disabled:opacity-50',
+        )}
+      />
+      <ComposerPrimitive.Send asChild>
+        <Button size="icon" className="rounded-full shrink-0">
+          <ArrowUp className="h-4 w-4" />
+        </Button>
+      </ComposerPrimitive.Send>
+    </ComposerPrimitive.Root>
+  )
+}
+
+function ThreadScrollToBottom() {
+  return (
+    <ThreadPrimitive.ScrollToBottom asChild>
+      <Button
+        variant="outline"
+        size="icon"
+        className="absolute bottom-16 right-6 rounded-full shadow-md z-10"
+      >
+        <ArrowDown className="h-4 w-4" />
+      </Button>
+    </ThreadPrimitive.ScrollToBottom>
+  )
+}

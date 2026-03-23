@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { fetchJSON, type Agent, type Conversation, type Message } from '../api'
-import { useSSE } from '../hooks/useSSE'
+import { fetchJSON, type Agent, type Conversation } from '../api'
+import { useCrowRuntime } from '../hooks/useCrowRuntime'
+import { AssistantRuntimeProvider } from '@assistant-ui/react'
+import { Thread } from '@/components/assistant-ui/thread'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import { ArrowUp, MessageSquarePlus, Cpu } from 'lucide-react'
-import Markdown from 'react-markdown'
+import { MessageSquarePlus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export default function ChatPage() {
@@ -16,12 +16,7 @@ export default function ChatPage() {
   const navigate = useNavigate()
   const [agents, setAgents] = useState<Agent[]>([])
   const [conversations, setConversations] = useState<Conversation[]>([])
-  const [messages, setMessages] = useState<Message[]>([])
   const [threadId, setThreadId] = useState<string | null>(null)
-  const [input, setInput] = useState('')
-  const [typing, setTyping] = useState(false)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     fetchJSON<Agent[]>('/agents').then(setAgents)
@@ -30,51 +25,18 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!conversationId) {
-      setMessages([])
       setThreadId(null)
       return
     }
-    fetchJSON<Message[]>(`/conversations/${conversationId}/messages`).then(setMessages)
     const conv = conversations.find(c => c.id === conversationId)
     if (conv) setThreadId(conv.gateway_thread_id)
   }, [conversationId, conversations])
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, typing])
-
-  const handleSSE = useCallback((data: { text: string; agent_name: string | null }) => {
-    setMessages(prev => [...prev, {
-      id: crypto.randomUUID(),
-      role: 'assistant',
-      content: data.text,
-      agent_name: data.agent_name,
-    }])
-    setTyping(false)
+  const refreshConversations = useCallback(() => {
+    fetchJSON<Conversation[]>('/conversations').then(setConversations)
   }, [])
 
-  useSSE(conversationId ?? null, handleSSE)
-
-  async function sendMessage(e: React.FormEvent) {
-    e.preventDefault()
-    const text = input.trim()
-    if (!text) return
-    setInput('')
-
-    setMessages(prev => [...prev, {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content: text,
-      agent_name: null,
-    }])
-    setTyping(true)
-
-    await fetchJSON('/messages', {
-      method: 'POST',
-      body: JSON.stringify({ text, thread_id: threadId || 'default' }),
-    })
-    inputRef.current?.focus()
-  }
+  const { runtime } = useCrowRuntime(conversationId ?? null, threadId, refreshConversations)
 
   async function startChatWithAgent(agentName: string) {
     const newThreadId = `chat-${agentName}-${Date.now()}`
@@ -82,7 +44,6 @@ export default function ChatPage() {
       method: 'POST',
       body: JSON.stringify({ text: `Hi, I'd like to chat with you.`, thread_id: newThreadId, agent: agentName }),
     })
-    // Poll for conversation
     const poll = async (attempts = 0): Promise<void> => {
       const convs = await fetchJSON<Conversation[]>('/conversations')
       setConversations(convs)
@@ -97,13 +58,6 @@ export default function ChatPage() {
       }
     }
     await poll()
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      sendMessage(e)
-    }
   }
 
   return (
@@ -178,58 +132,9 @@ export default function ChatPage() {
             <div className="px-6 py-3 border-b bg-card font-semibold text-sm">
               {threadId}
             </div>
-            <ScrollArea className="flex-1 px-6 py-4">
-              <div className="flex flex-col gap-1 max-w-3xl mx-auto">
-                {messages.map(msg => (
-                  <div
-                    key={msg.id}
-                    className={cn('flex flex-col max-w-[70%]', msg.role === 'user' ? 'self-end items-end' : 'self-start items-start')}
-                  >
-                    {msg.role !== 'user' && msg.agent_name && (
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground mb-0.5 pl-3">
-                        <Cpu className="h-3 w-3" />
-                        {msg.agent_name}
-                      </div>
-                    )}
-                    <div className={cn(
-                      'px-4 py-2.5 rounded-2xl text-sm leading-relaxed',
-                      msg.role === 'user'
-                        ? 'bg-primary text-primary-foreground rounded-br-sm'
-                        : 'bg-card border border-border rounded-bl-sm prose prose-sm prose-neutral max-w-none'
-                    )}>
-                      {msg.role === 'user'
-                        ? msg.content
-                        : <Markdown>{msg.content}</Markdown>
-                      }
-                    </div>
-                  </div>
-                ))}
-                {typing && (
-                  <div className="self-start">
-                    <div className="bg-card border border-border rounded-2xl rounded-bl-sm px-4 py-3 flex gap-1">
-                      <span className="w-2 h-2 bg-muted-foreground/40 rounded-full animate-bounce [animation-delay:0ms]" />
-                      <span className="w-2 h-2 bg-muted-foreground/40 rounded-full animate-bounce [animation-delay:150ms]" />
-                      <span className="w-2 h-2 bg-muted-foreground/40 rounded-full animate-bounce [animation-delay:300ms]" />
-                    </div>
-                  </div>
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-            </ScrollArea>
-            <form className="px-6 py-3 border-t bg-card flex gap-2 items-end" onSubmit={sendMessage}>
-              <Input
-                ref={inputRef}
-                placeholder="Message..."
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                autoFocus
-                className="rounded-full"
-              />
-              <Button type="submit" size="icon" className="rounded-full shrink-0" disabled={!input.trim()}>
-                <ArrowUp className="h-4 w-4" />
-              </Button>
-            </form>
+            <AssistantRuntimeProvider runtime={runtime}>
+              <Thread />
+            </AssistantRuntimeProvider>
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground">
