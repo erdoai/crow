@@ -12,7 +12,7 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [keyName, setKeyName] = useState('')
   const [newKey, setNewKey] = useState('')
-  const [shareUrl, setShareUrl] = useState<Record<string, string>>({})
+  const [_shareUrl, setShareUrl] = useState<Record<string, string>>({})
   const [copiedShare, setCopiedShare] = useState('')
   const [views, setViews] = useState<DashboardView[]>([])
   const importRef = React.useRef<HTMLInputElement>(null)
@@ -109,9 +109,11 @@ export default function DashboardPage() {
         <div className="flex items-center gap-4">
           <span className="text-sm opacity-90">hi, {data.display_name}</span>
           {views.map(v => (
-            <Button key={v.name} variant="ghost" size="sm" asChild className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10">
-              <a href={v.url}><LayoutDashboard className="h-4 w-4 mr-1" /> {v.label}</a>
-            </Button>
+            <a key={v.name} href={v.url}>
+              <Button variant="ghost" size="sm" className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10">
+                <LayoutDashboard className="h-4 w-4 mr-1" /> {v.label}
+              </Button>
+            </a>
           ))}
           <Button variant="ghost" size="sm" onClick={() => navigate('/chat')} className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10">
             <MessageSquare className="h-4 w-4 mr-1" /> chat
