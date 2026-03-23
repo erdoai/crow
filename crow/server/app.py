@@ -30,8 +30,9 @@ from crow.server.routes import (
 
 logger = logging.getLogger(__name__)
 
-# Path to the built React SPA
-SPA_DIR = Path(__file__).parent.parent.parent / "web" / "dist"
+# Path to the built React SPA — resolve from cwd (Docker WORKDIR=/app)
+# rather than __file__ which points to site-packages when pip-installed.
+SPA_DIR = Path.cwd() / "web" / "dist"
 
 
 @asynccontextmanager
