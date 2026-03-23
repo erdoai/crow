@@ -10,7 +10,7 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-COPY pyproject.toml .
+COPY pyproject.toml README.md ./
 COPY crow/ crow/
 
 RUN pip install --no-cache-dir .
