@@ -9,7 +9,7 @@ from collections.abc import Callable
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import JSONResponse, RedirectResponse, Response
 
 from crow.auth.dependencies import get_current_user
 
@@ -102,7 +102,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Unauthenticated HTML requests → redirect to login
         accept = request.headers.get("accept", "")
         if "text/html" in accept:
-            from starlette.responses import RedirectResponse
             return RedirectResponse(url="/login", status_code=303)
 
         return JSONResponse(
