@@ -274,6 +274,26 @@ auth:
     api_key: ${RESEND_API_KEY}
 ```
 
+### Dashboard and agent scoping
+
+Dashboards and agents support three visibility levels:
+
+- **Instance-level** — uploaded with the static `CROW_API_KEY` from `crow.yml`, or configured directly in `crow.yml`. Visible to all users.
+- **User-level (private)** — uploaded with a personal API key (generated from the dashboard settings page). Only visible to that user.
+- **Shared** — a user-level dashboard made accessible to anyone via a share link (`?token=xxx`).
+
+List endpoints return your own items plus all instance-level items. Other users never see your private dashboards or agents.
+
+```bash
+# Instance-level (visible to all users)
+export CROW_API_KEY=crow_static_key_from_config
+crow dashboard upload shared-dash ./dashboard
+
+# User-level (private to you)
+export CROW_API_KEY=crow_your_personal_api_key
+crow dashboard upload my-dash ./dashboard
+```
+
 ## Tech stack
 
 - Python 3.11+, async

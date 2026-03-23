@@ -281,6 +281,35 @@ curl -N /api/state/stream?keys=a,b     # filter by key
 
 SSE events use the event type as the SSE `event:` field (`state.updated`, `message.response`, `job.completed`, etc.), so clients can filter with `addEventListener`.
 
+### Scoping model (dashboards and agents)
+
+Dashboards and agents have three visibility levels:
+
+| Level | `user_id` | How created | Visibility |
+|-------|-----------|-------------|------------|
+| **Instance-level** | NULL | Uploaded with the static API key (`CROW_API_KEY` from crow.yml), or configured in `crow.yml` | All users |
+| **User-level (private)** | set | Uploaded with a personal API key (generated from dashboard) | Only that user |
+| **Shared** | set | User-level, but accessed via share link (`?token=xxx`) | Anyone with the link |
+
+**How it works in practice:**
+- The static API key (`CROW_API_KEY` from crow.yml) maps to no user — uploads are instance-level (global).
+- A personal API key (generated from the dashboard settings page) maps to your user — uploads are scoped to you.
+- List endpoints (`GET /api/dashboard/views`, `GET /api/agents`) return your own items + instance-level items.
+- Other users never see your private dashboards or agents.
+
+**CLI usage with personal API key:**
+```bash
+# Instance-level (visible to all users)
+export CROW_API_KEY=crow_static_key_from_config
+crow dashboard upload shared-dash ./dashboard
+
+# User-level (private to you)
+export CROW_API_KEY=crow_your_personal_api_key
+crow dashboard upload my-dash ./dashboard
+```
+
+**Share links:** Dashboards can be shared via a token-based URL (`/dashboard/custom/{name}/?token=xxx`). The share token is generated when a user shares a dashboard. Anyone with the link can view the dashboard without logging in.
+
 ### Custom dashboard views
 
 Serve project-specific HTML dashboards alongside the built-in React UI. Configured in `crow.yml`:
