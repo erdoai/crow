@@ -79,6 +79,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="crow", lifespan=lifespan)
 
     # SPA static assets (Vite build output)
+    logger.info("SPA_DIR=%s exists=%s", SPA_DIR, SPA_DIR.exists())
     if (SPA_DIR / "assets").exists():
         app.mount(
             "/assets",
