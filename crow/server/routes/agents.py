@@ -11,6 +11,51 @@ async def list_agents(request: Request):
     return await db.list_agent_defs()
 
 
+@router.get("/agents/{name}")
+async def get_agent(name: str, request: Request):
+    """Get a single agent definition."""
+    db = request.app.state.db
+    agent = await db.get_agent_def(name)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return agent
+
+
+class AgentUpsert(BaseModel):
+    name: str
+    description: str = ""
+    prompt_template: str = ""
+    tools: list[str] = []
+    mcp_servers: list[str] = []
+    knowledge_areas: list[str] = []
+
+
+@router.post("/agents")
+async def create_or_update_agent(agent: AgentUpsert, request: Request):
+    """Create or update an agent definition."""
+    db = request.app.state.db
+    await db.upsert_agent_def(
+        name=agent.name,
+        description=agent.description,
+        prompt_template=agent.prompt_template,
+        tools=agent.tools,
+        mcp_servers=agent.mcp_servers,
+        knowledge_areas=agent.knowledge_areas,
+    )
+    return {"status": "ok", "name": agent.name}
+
+
+@router.delete("/agents/{name}")
+async def delete_agent(name: str, request: Request):
+    """Delete an agent definition."""
+    db = request.app.state.db
+    agent = await db.get_agent_def(name)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    await db.delete_agent_def(name)
+    return {"status": "deleted", "name": name}
+
+
 @router.get("/agents/{name}/knowledge")
 async def agent_knowledge(
     name: str, request: Request, category: str | None = None

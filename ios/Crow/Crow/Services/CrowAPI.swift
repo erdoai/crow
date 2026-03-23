@@ -22,6 +22,35 @@ final class CrowAPI {
         try await get("/agents")
     }
 
+    func getAgent(name: String) async throws -> Agent {
+        try await get("/agents/\(name)")
+    }
+
+    @discardableResult
+    func upsertAgent(
+        name: String,
+        description: String,
+        promptTemplate: String,
+        tools: [String],
+        mcpServers: [String],
+        knowledgeAreas: [String]
+    ) async throws -> [String: String] {
+        let body = AgentUpsertRequest(
+            name: name,
+            description: description,
+            prompt_template: promptTemplate,
+            tools: tools,
+            mcp_servers: mcpServers,
+            knowledge_areas: knowledgeAreas
+        )
+        return try await post("/agents", body: body)
+    }
+
+    @discardableResult
+    func deleteAgent(name: String) async throws -> [String: String] {
+        try await delete("/agents/\(name)")
+    }
+
     // MARK: - Conversations
 
     func listConversations() async throws -> [Conversation] {
@@ -38,6 +67,23 @@ final class CrowAPI {
     func sendMessage(text: String, threadId: String = "default", agent: String? = nil) async throws -> SendMessageResponse {
         let body = SendMessageRequest(text: text, thread_id: threadId, agent: agent)
         return try await post("/messages", body: body)
+    }
+
+    // MARK: - Knowledge / Learnings
+
+    func listLearnings() async throws -> [KnowledgeEntry] {
+        try await get("/agents/_user/knowledge?category=learnings")
+    }
+
+    @discardableResult
+    func addLearning(title: String, content: String, tags: [String]) async throws -> [String: String] {
+        let body = KnowledgeWriteRequest(
+            category: "learnings",
+            title: title,
+            content: content,
+            tags: tags
+        )
+        return try await post("/agents/_user/knowledge", body: body)
     }
 
     // MARK: - Auth
@@ -72,6 +118,13 @@ final class CrowAPI {
         var request = try makeRequest(path: path, method: "POST")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(body)
+        let (data, response) = try await session.data(for: request)
+        try checkResponse(response)
+        return try decoder.decode(T.self, from: data)
+    }
+
+    private func delete<T: Decodable>(_ path: String) async throws -> T {
+        let request = try makeRequest(path: path, method: "DELETE")
         let (data, response) = try await session.data(for: request)
         try checkResponse(response)
         return try decoder.decode(T.self, from: data)

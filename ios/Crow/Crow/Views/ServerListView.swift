@@ -77,7 +77,7 @@ struct AddServerSheet: View {
                     TextField("URL", text: $url)
                         .textContentType(.URL)
                         .keyboardType(.URL)
-                        .autocapitalization(.none)
+                        .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                 }
 
@@ -86,7 +86,7 @@ struct AddServerSheet: View {
                         TextField("Email", text: $email)
                             .textContentType(.emailAddress)
                             .keyboardType(.emailAddress)
-                            .autocapitalization(.none)
+                            .textInputAutocapitalization(.never)
 
                         if codeSent {
                             TextField("Verification code", text: $code)

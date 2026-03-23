@@ -1,6 +1,46 @@
 import SwiftUI
 
+enum MainTab: Hashable {
+    case chats
+    case agents
+    case learnings
+}
+
 struct MainView: View {
+    let api: CrowAPI
+
+    @EnvironmentObject var store: ServerStore
+    @State private var selectedTab: MainTab = .chats
+
+    var body: some View {
+        TabView(selection: $selectedTab) {
+            ChatsTab(api: api)
+                .environmentObject(store)
+                .tabItem {
+                    Label("Chats", systemImage: "bubble.left.and.bubble.right")
+                }
+                .tag(MainTab.chats)
+
+            AgentsTab(api: api)
+                .tabItem {
+                    Label("Agents", systemImage: "cpu")
+                }
+                .tag(MainTab.agents)
+
+            NavigationStack {
+                LearningsView(api: api)
+            }
+            .tabItem {
+                Label("Learnings", systemImage: "lightbulb")
+            }
+            .tag(MainTab.learnings)
+        }
+    }
+}
+
+// MARK: - Chats Tab
+
+struct ChatsTab: View {
     let api: CrowAPI
 
     @EnvironmentObject var store: ServerStore
@@ -129,6 +169,113 @@ struct MainView: View {
         }
         loading = false
     }
+}
+
+// MARK: - Agents Tab
+
+struct AgentsTab: View {
+    let api: CrowAPI
+
+    @State private var agents: [Agent] = []
+    @State private var loading = true
+    @State private var showCreate = false
+    @State private var editingAgent: String?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(agents) { agent in
+                    Button {
+                        editingAgent = agent.name
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: iconForAgent(agent.name))
+                                .font(.title3)
+                                .frame(width: 36, height: 36)
+                                .background(Color.accentColor.opacity(0.15))
+                                .clipShape(Circle())
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(agent.name)
+                                    .font(.headline)
+                                    .foregroundStyle(.primary)
+                                Text(agent.description)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+
+                                if let tools = agent.tools, !tools.isEmpty {
+                                    Text(tools.joined(separator: " · "))
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                        .lineLimit(1)
+                                }
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) {
+                            Task {
+                                _ = try? await api.deleteAgent(name: agent.name)
+                                await load()
+                            }
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
+                }
+            }
+            .overlay {
+                if loading {
+                    ProgressView()
+                } else if agents.isEmpty {
+                    ContentUnavailableView(
+                        "No agents",
+                        systemImage: "cpu",
+                        description: Text("Create an agent to get started")
+                    )
+                }
+            }
+            .navigationTitle("Agents")
+            .toolbar {
+                Button(action: { showCreate = true }) {
+                    Image(systemName: "plus")
+                }
+            }
+            .sheet(isPresented: $showCreate) {
+                AgentDetailView(api: api, agentName: nil) { await load() }
+            }
+            .sheet(item: $editingAgent) { name in
+                AgentDetailView(api: api, agentName: name) { await load() }
+            }
+            .task { await load() }
+            .refreshable { await load() }
+        }
+    }
+
+    private func load() async {
+        do {
+            agents = try await api.listAgents()
+        } catch {
+            // TODO: error handling
+        }
+        loading = false
+    }
+
+    private func iconForAgent(_ name: String) -> String {
+        switch name {
+        case "pa": return "person.crop.circle"
+        case "devbot": return "chevron.left.forwardslash.chevron.right"
+        case "pilot": return "airplane"
+        default: return "cpu"
+        }
+    }
+}
+
+// Make String work as sheet item
+extension String: @retroactive Identifiable {
+    public var id: String { self }
 }
 
 // MARK: - Subviews
@@ -310,7 +457,6 @@ struct NewChatSheet: View {
                 text: trimmed,
                 agent: selectedAgent?.name
             )
-            // Fetch conversation list to get the new one
             let conversations = try await api.listConversations()
             if let conv = conversations.first(where: { $0.gateway_thread_id == result.thread_id }) {
                 await onCreated(conv)

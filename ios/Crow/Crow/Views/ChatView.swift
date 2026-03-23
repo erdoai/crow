@@ -8,8 +8,9 @@ struct ChatView: View {
     @State private var messages: [Message] = []
     @State private var input = ""
     @State private var loading = true
-    @State private var sending = false
+    @State private var waitingForReply = false
     @State private var sseClient: SSEClient?
+    @FocusState private var inputFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -42,16 +43,28 @@ struct ChatView: View {
                             MessageRow(message: msg)
                                 .id(msg.id)
                         }
+                        if waitingForReply {
+                            TypingIndicator()
+                                .id("typing")
+                        }
                     }
                     .padding(.vertical, 12)
                 }
             }
             .onChange(of: messages.count) {
-                if let last = messages.last {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo(last.id, anchor: .bottom)
-                    }
-                }
+                scrollToBottom(proxy)
+            }
+            .onChange(of: waitingForReply) {
+                scrollToBottom(proxy)
+            }
+        }
+    }
+
+    private func scrollToBottom(_ proxy: ScrollViewProxy) {
+        let target = waitingForReply ? "typing" : messages.last?.id
+        if let target {
+            withAnimation(.easeOut(duration: 0.2)) {
+                proxy.scrollTo(target, anchor: .bottom)
             }
         }
     }
@@ -63,11 +76,18 @@ struct ChatView: View {
             TextField("Message", text: $input, axis: .vertical)
                 .textFieldStyle(.plain)
                 .lineLimit(1...8)
+                .submitLabel(.send)
+                .focused($inputFocused)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .background(Color(.systemGray6))
                 .clipShape(RoundedRectangle(cornerRadius: 20))
                 .onSubmit { send() }
+                .onKeyPress(.return) {
+                    // Hardware keyboard: Return sends, Shift+Return inserts newline
+                    send()
+                    return .handled
+                }
 
             Button(action: send) {
                 Image(systemName: "arrow.up.circle.fill")
@@ -81,7 +101,7 @@ struct ChatView: View {
     }
 
     private var canSend: Bool {
-        !input.trimmingCharacters(in: .whitespaces).isEmpty && !sending
+        !input.trimmingCharacters(in: .whitespaces).isEmpty && !waitingForReply
     }
 
     // MARK: - Actions
@@ -97,9 +117,9 @@ struct ChatView: View {
 
     private func send() {
         let text = input.trimmingCharacters(in: .whitespaces)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty, !waitingForReply else { return }
         input = ""
-        sending = true
+        waitingForReply = true
 
         // Optimistic insert
         let local = Message(
@@ -116,9 +136,8 @@ struct ChatView: View {
             do {
                 try await api.sendMessage(text: text, threadId: threadId)
             } catch {
-                // TODO: show error
+                waitingForReply = false
             }
-            sending = false
         }
     }
 
@@ -136,6 +155,7 @@ struct ChatView: View {
                 created_at: payload.timestamp
             )
             DispatchQueue.main.async {
+                waitingForReply = false
                 messages.append(msg)
             }
         }
@@ -148,6 +168,51 @@ private struct SSEPayload: Decodable {
     let text: String
     let agent_name: String?
     let timestamp: String
+}
+
+// MARK: - Typing Indicator
+
+struct TypingIndicator: View {
+    @State private var phase = 0.0
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 0) {
+            HStack(spacing: 5) {
+                ForEach(0..<3) { i in
+                    Circle()
+                        .fill(Color(.systemGray3))
+                        .frame(width: 8, height: 8)
+                        .scaleEffect(dotScale(for: i))
+                        .opacity(dotOpacity(for: i))
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(Color(.systemGray6))
+            .clipShape(RoundedRectangle(cornerRadius: 18))
+
+            Spacer(minLength: 48)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 2)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: false)) {
+                phase = 1.0
+            }
+        }
+    }
+
+    private func dotScale(for index: Int) -> Double {
+        let offset = Double(index) * 0.33
+        let t = (phase + offset).truncatingRemainder(dividingBy: 1.0)
+        return 0.6 + 0.4 * sin(t * .pi)
+    }
+
+    private func dotOpacity(for index: Int) -> Double {
+        let offset = Double(index) * 0.33
+        let t = (phase + offset).truncatingRemainder(dividingBy: 1.0)
+        return 0.4 + 0.6 * sin(t * .pi)
+    }
 }
 
 // MARK: - Message Row
