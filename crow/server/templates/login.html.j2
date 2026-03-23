@@ -1,0 +1,32 @@
+{% extends "base.html.j2" %}
+{% block title %}sign in — crow{% endblock %}
+{% block body %}
+<div class="auth-page">
+    <div class="auth-card">
+        <h1 class="auth-logo">crow</h1>
+        <p class="auth-subtitle">sign in to continue</p>
+
+        <div id="email-step">
+            <input type="email" id="email-input" class="input" placeholder="your email" autocomplete="email" autofocus>
+            <button class="btn btn-primary" onclick="sendCode()">send code</button>
+        </div>
+
+        <div id="code-step" class="hidden">
+            <p class="code-label">enter the 6-digit code sent to <span id="code-email"></span></p>
+            <div class="otp-inputs">
+                <input type="text" maxlength="1" inputmode="numeric" class="otp-digit" data-idx="0">
+                <input type="text" maxlength="1" inputmode="numeric" class="otp-digit" data-idx="1">
+                <input type="text" maxlength="1" inputmode="numeric" class="otp-digit" data-idx="2">
+                <input type="text" maxlength="1" inputmode="numeric" class="otp-digit" data-idx="3">
+                <input type="text" maxlength="1" inputmode="numeric" class="otp-digit" data-idx="4">
+                <input type="text" maxlength="1" inputmode="numeric" class="otp-digit" data-idx="5">
+            </div>
+            <button class="btn btn-primary" onclick="verifyCode()">verify</button>
+            <button class="btn btn-ghost" onclick="backToEmail()">use a different email</button>
+        </div>
+
+        <p id="auth-error" class="error hidden"></p>
+        <p id="auth-status" class="status hidden"></p>
+    </div>
+</div>
+{% endblock %}

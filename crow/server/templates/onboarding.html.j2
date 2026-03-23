@@ -1,0 +1,16 @@
+{% extends "base.html.j2" %}
+{% block title %}welcome — crow{% endblock %}
+{% block body %}
+<div class="auth-page">
+    <div class="auth-card">
+        <h1 class="auth-logo">crow</h1>
+        <p class="auth-subtitle">welcome! one quick thing&hellip;</p>
+
+        <label class="input-label" for="name-input">what should I call you?</label>
+        <input type="text" id="name-input" class="input" placeholder="your name" autofocus>
+        <button class="btn btn-primary" onclick="submitOnboarding()">get started</button>
+
+        <p id="auth-error" class="error hidden"></p>
+    </div>
+</div>
+{% endblock %}

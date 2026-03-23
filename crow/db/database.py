@@ -27,7 +27,7 @@ class Database:
     # -- Conversations --
 
     async def get_or_create_conversation(
-        self, gateway: str, gateway_thread_id: str
+        self, gateway: str, gateway_thread_id: str, user_id: str | None = None
     ) -> dict:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
@@ -42,11 +42,12 @@ class Database:
             now = datetime.now(UTC)
             await conn.execute(
                 """INSERT INTO conversations
-                   (id, gateway, gateway_thread_id, created_at, updated_at)
-                   VALUES ($1, $2, $3, $4, $5)""",
+                   (id, gateway, gateway_thread_id, user_id, created_at, updated_at)
+                   VALUES ($1, $2, $3, $4, $5, $6)""",
                 conv_id,
                 gateway,
                 gateway_thread_id,
+                user_id,
                 now,
                 now,
             )
@@ -54,6 +55,7 @@ class Database:
                 "id": conv_id,
                 "gateway": gateway,
                 "gateway_thread_id": gateway_thread_id,
+                "user_id": user_id,
                 "created_at": now,
                 "updated_at": now,
             }
@@ -64,10 +66,19 @@ class Database:
         )
         return dict(row) if row else None
 
-    async def list_conversations(self, limit: int = 50) -> list[dict]:
-        rows = await self._pool.fetch(
-            "SELECT * FROM conversations ORDER BY updated_at DESC LIMIT $1", limit
-        )
+    async def list_conversations(
+        self, limit: int = 50, user_id: str | None = None
+    ) -> list[dict]:
+        if user_id:
+            rows = await self._pool.fetch(
+                "SELECT * FROM conversations WHERE user_id = $1 ORDER BY updated_at DESC LIMIT $2",
+                user_id,
+                limit,
+            )
+        else:
+            rows = await self._pool.fetch(
+                "SELECT * FROM conversations ORDER BY updated_at DESC LIMIT $1", limit
+            )
         return [dict(r) for r in rows]
 
     # -- Messages --
@@ -226,6 +237,7 @@ class Database:
         text_query: str | None = None,
         agent_name: str | None = None,
         category: str | None = None,
+        user_id: str | None = None,
         limit: int = 10,
     ) -> list[dict]:
         """Search knowledge by semantic similarity and/or text match."""
@@ -237,6 +249,11 @@ class Database:
             param_idx += 1
             conditions.append(f"agent_name = ${param_idx}")
             params.append(agent_name)
+
+        if user_id:
+            param_idx += 1
+            conditions.append(f"user_id = ${param_idx}")
+            params.append(user_id)
 
         if category:
             param_idx += 1
@@ -278,6 +295,7 @@ class Database:
         source: str | None = None,
         tags: list[str] | None = None,
         embedding: list[float] | None = None,
+        user_id: str | None = None,
     ) -> str:
         knowledge_id = uuid4().hex
         now = datetime.now(UTC)
@@ -285,8 +303,8 @@ class Database:
             await self._pool.execute(
                 """INSERT INTO knowledge
                    (id, agent_name, category, title, content,
-                    source, tags, embedding, created_at, updated_at)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)""",
+                    source, tags, embedding, user_id, created_at, updated_at)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)""",
                 knowledge_id,
                 agent_name,
                 category,
@@ -295,6 +313,7 @@ class Database:
                 source,
                 tags or [],
                 str(embedding),
+                user_id,
                 now,
                 now,
             )
@@ -302,8 +321,8 @@ class Database:
             await self._pool.execute(
                 """INSERT INTO knowledge
                    (id, agent_name, category, title, content,
-                    source, tags, created_at, updated_at)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)""",
+                    source, tags, user_id, created_at, updated_at)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)""",
                 knowledge_id,
                 agent_name,
                 category,
@@ -311,6 +330,7 @@ class Database:
                 content,
                 source,
                 tags or [],
+                user_id,
                 now,
                 now,
             )
@@ -398,3 +418,181 @@ class Database:
         await self._pool.execute(
             "DELETE FROM mcp_servers WHERE name = $1", name
         )
+
+    # -- Users --
+
+    async def get_or_create_user(self, email: str) -> dict:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM users WHERE email = $1", email
+            )
+            if row:
+                return dict(row)
+
+            user_id = uuid4().hex
+            now = datetime.now(UTC)
+            await conn.execute(
+                """INSERT INTO users (id, email, created_at, updated_at)
+                   VALUES ($1, $2, $3, $4)""",
+                user_id,
+                email,
+                now,
+                now,
+            )
+            return {
+                "id": user_id,
+                "email": email,
+                "display_name": None,
+                "created_at": now,
+                "updated_at": now,
+            }
+
+    async def get_user(self, user_id: str) -> dict | None:
+        row = await self._pool.fetchrow("SELECT * FROM users WHERE id = $1", user_id)
+        return dict(row) if row else None
+
+    async def update_user_display_name(self, user_id: str, display_name: str) -> None:
+        await self._pool.execute(
+            "UPDATE users SET display_name = $1, updated_at = $2 WHERE id = $3",
+            display_name,
+            datetime.now(UTC),
+            user_id,
+        )
+
+    # -- Email Codes --
+
+    async def create_email_code(self, email: str, code: str, expires_at: datetime) -> str:
+        code_id = uuid4().hex
+        await self._pool.execute(
+            """INSERT INTO email_codes (id, email, code, expires_at, created_at)
+               VALUES ($1, $2, $3, $4, $5)""",
+            code_id,
+            email,
+            code,
+            expires_at,
+            datetime.now(UTC),
+        )
+        return code_id
+
+    async def verify_email_code(self, email: str, code: str) -> bool:
+        """Verify and consume an email code. Returns True if valid."""
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """SELECT id FROM email_codes
+                   WHERE email = $1 AND code = $2
+                     AND used = FALSE AND expires_at > $3
+                   ORDER BY created_at DESC LIMIT 1""",
+                email,
+                code,
+                datetime.now(UTC),
+            )
+            if not row:
+                return False
+            await conn.execute(
+                "UPDATE email_codes SET used = TRUE WHERE id = $1",
+                row["id"],
+            )
+            return True
+
+    async def count_recent_codes(self, email: str, since: datetime) -> int:
+        row = await self._pool.fetchrow(
+            "SELECT COUNT(*) as cnt FROM email_codes WHERE email = $1 AND created_at > $2",
+            email,
+            since,
+        )
+        return row["cnt"] if row else 0
+
+    # -- API Keys --
+
+    async def create_api_key(
+        self,
+        name: str,
+        key_hash: str,
+        key_prefix: str,
+        user_id: str | None = None,
+    ) -> str:
+        key_id = uuid4().hex
+        await self._pool.execute(
+            """INSERT INTO api_keys (id, user_id, name, key_hash, key_prefix, created_at)
+               VALUES ($1, $2, $3, $4, $5, $6)""",
+            key_id,
+            user_id,
+            name,
+            key_hash,
+            key_prefix,
+            datetime.now(UTC),
+        )
+        return key_id
+
+    async def get_api_key_by_hash(self, key_hash: str) -> dict | None:
+        row = await self._pool.fetchrow(
+            "SELECT * FROM api_keys WHERE key_hash = $1", key_hash
+        )
+        return dict(row) if row else None
+
+    async def list_api_keys(self, user_id: str | None = None) -> list[dict]:
+        cols = "id, user_id, name, key_prefix, created_at, last_used_at"
+        if user_id:
+            rows = await self._pool.fetch(
+                f"SELECT {cols} FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC",
+                user_id,
+            )
+        else:
+            rows = await self._pool.fetch(
+                f"SELECT {cols} FROM api_keys ORDER BY created_at DESC"
+            )
+        return [dict(r) for r in rows]
+
+    async def delete_api_key(self, key_id: str, user_id: str | None = None) -> bool:
+        if user_id:
+            result = await self._pool.execute(
+                "DELETE FROM api_keys WHERE id = $1 AND user_id = $2", key_id, user_id
+            )
+        else:
+            result = await self._pool.execute(
+                "DELETE FROM api_keys WHERE id = $1", key_id
+            )
+        return result.split()[-1] != "0"
+
+    async def touch_api_key(self, key_id: str) -> None:
+        await self._pool.execute(
+            "UPDATE api_keys SET last_used_at = $1 WHERE id = $2",
+            datetime.now(UTC),
+            key_id,
+        )
+
+    # -- Phone Links --
+
+    async def link_phone(self, user_id: str, phone_number: str) -> str:
+        link_id = uuid4().hex
+        await self._pool.execute(
+            """INSERT INTO phone_links (id, user_id, phone_number, created_at)
+               VALUES ($1, $2, $3, $4)""",
+            link_id,
+            user_id,
+            phone_number,
+            datetime.now(UTC),
+        )
+        return link_id
+
+    async def unlink_phone(self, link_id: str, user_id: str) -> bool:
+        result = await self._pool.execute(
+            "DELETE FROM phone_links WHERE id = $1 AND user_id = $2", link_id, user_id
+        )
+        return result.split()[-1] != "0"
+
+    async def get_user_by_phone(self, phone_number: str) -> dict | None:
+        row = await self._pool.fetchrow(
+            """SELECT u.* FROM users u
+               JOIN phone_links pl ON pl.user_id = u.id
+               WHERE pl.phone_number = $1""",
+            phone_number,
+        )
+        return dict(row) if row else None
+
+    async def list_phone_links(self, user_id: str) -> list[dict]:
+        rows = await self._pool.fetch(
+            "SELECT * FROM phone_links WHERE user_id = $1 ORDER BY created_at DESC",
+            user_id,
+        )
+        return [dict(r) for r in rows]

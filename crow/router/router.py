@@ -22,9 +22,11 @@ class Router:
         text = event.data["text"]
 
         # Get or create conversation for this gateway thread
+        user_id = event.data.get("user_id")
         conversation = await self.db.get_or_create_conversation(
             gateway=gateway,
             gateway_thread_id=gateway_thread_id,
+            user_id=user_id,
         )
 
         # Save inbound message

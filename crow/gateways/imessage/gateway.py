@@ -6,6 +6,7 @@ import sqlite3
 from pathlib import Path
 
 from crow.config.settings import Settings
+from crow.db.database import Database
 from crow.events.bus import EventBus
 from crow.events.types import MESSAGE_INBOUND, MESSAGE_RESPONSE, Event
 from crow.gateways.base import Gateway
@@ -17,9 +18,10 @@ logger = logging.getLogger(__name__)
 class IMessageGateway(Gateway):
     name = "imessage"
 
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, db: Database | None = None):
         self.chat_db_path = Path(settings.imessage_chat_db).expanduser()
         self.allowed_numbers = set(settings.imessage_allowed_numbers)
+        self._db = db
         self._last_rowid: int = 0
         self._observer = None
         self._bus: EventBus | None = None
@@ -98,22 +100,26 @@ class IMessageGateway(Gateway):
                 handle = row["handle_id"] or ""
                 self._last_rowid = max(self._last_rowid, row["ROWID"])
 
-                # Filter by allowed numbers
-                if self.allowed_numbers and handle not in self.allowed_numbers:
-                    logger.debug("Ignoring message from %s (not in allowlist)", handle)
+                # Resolve user via phone_links DB, fall back to allowlist
+                user_id = None
+                if self._db:
+                    user = await self._db.get_user_by_phone(handle)
+                    if user:
+                        user_id = user["id"]
+
+                if not user_id and self.allowed_numbers and handle not in self.allowed_numbers:
+                    logger.debug("Ignoring message from %s (not linked or in allowlist)", handle)
                     continue
 
                 logger.info("New iMessage from %s: %s", handle, row["text"][:50])
-                await self._bus.publish(
-                    Event(
-                        type=MESSAGE_INBOUND,
-                        data={
-                            "gateway": "imessage",
-                            "gateway_thread_id": handle,
-                            "text": row["text"],
-                        },
-                    )
-                )
+                event_data = {
+                    "gateway": "imessage",
+                    "gateway_thread_id": handle,
+                    "text": row["text"],
+                }
+                if user_id:
+                    event_data["user_id"] = user_id
+                await self._bus.publish(Event(type=MESSAGE_INBOUND, data=event_data))
 
             conn.close()
         except Exception:
