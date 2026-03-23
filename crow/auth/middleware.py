@@ -99,11 +99,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 {"detail": "Invalid API key"}, status_code=401
             )
 
-        # SPA routes: let the catch-all serve index.html (React handles auth)
-        # But NOT custom dashboards — those need server-side auth
+        # Unauthenticated HTML requests → redirect to login
         accept = request.headers.get("accept", "")
-        if "text/html" in accept and not path.startswith("/api/") and not path.startswith("/dashboard/custom/"):
-            return await call_next(request)
+        if "text/html" in accept:
+            from starlette.responses import RedirectResponse
+            return RedirectResponse(url="/login", status_code=303)
 
         return JSONResponse(
             {"detail": "Authentication required"}, status_code=401
