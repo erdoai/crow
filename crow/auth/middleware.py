@@ -100,8 +100,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
             )
 
         # SPA routes: let the catch-all serve index.html (React handles auth)
+        # But NOT custom dashboards — those need server-side auth
         accept = request.headers.get("accept", "")
-        if "text/html" in accept and not path.startswith("/api/"):
+        if "text/html" in accept and not path.startswith("/api/") and not path.startswith("/dashboard/custom/"):
             return await call_next(request)
 
         return JSONResponse(
