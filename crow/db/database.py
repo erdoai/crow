@@ -453,6 +453,29 @@ class Database:
             "DELETE FROM mcp_servers WHERE name = $1", name
         )
 
+    # -- State Channel --
+
+    async def set_state(self, key: str, data: dict) -> dict:
+        import json
+
+        data_json = json.dumps(data)
+        row = await self._pool.fetchrow(
+            """INSERT INTO state (key, data, updated_at)
+               VALUES ($1, $2::jsonb, NOW())
+               ON CONFLICT (key) DO UPDATE SET
+                 data = $2::jsonb, updated_at = NOW()
+               RETURNING *""",
+            key,
+            data_json,
+        )
+        return dict(row)
+
+    async def get_state(self, key: str) -> dict | None:
+        row = await self._pool.fetchrow(
+            "SELECT * FROM state WHERE key = $1", key
+        )
+        return dict(row) if row else None
+
     # -- Users --
 
     async def get_or_create_user(self, email: str) -> dict:

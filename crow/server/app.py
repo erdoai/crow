@@ -9,7 +9,12 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from crow.auth.middleware import AuthMiddleware
-from crow.config.loader import auto_import_if_empty, extract_auth_config, load_config
+from crow.config.loader import (
+    auto_import_if_empty,
+    extract_auth_config,
+    extract_dashboard_config,
+    load_config,
+)
 from crow.config.settings import Settings
 from crow.db.database import Database
 from crow.events.bus import EventBus
@@ -24,6 +29,7 @@ from crow.server.routes import (
     health,
     jobs,
     messages,
+    state,
     stream,
     workers,
 )
@@ -43,6 +49,7 @@ async def lifespan(app: FastAPI):
     # Load crow.yml and extract auth config
     crow_config = load_config()
     app.state.auth_config = extract_auth_config(crow_config)
+    app.state.dashboard_config = extract_dashboard_config(crow_config)
 
     # Database
     db = await Database.connect(settings.database_url)
@@ -96,11 +103,23 @@ def create_app() -> FastAPI:
     app.include_router(jobs.router)
     app.include_router(workers.router)
     app.include_router(config.router)
+    app.include_router(state.router)
 
     # Auth + dashboard JSON APIs
     app.include_router(auth.api_router)  # /api/me
     app.include_router(auth.router)      # /auth/*
     app.include_router(dashboard.router)
+
+    # Custom dashboard views (static HTML dirs from crow.yml)
+    crow_config = load_config()
+    for view_name, view_cfg in extract_dashboard_config(crow_config).get("views", {}).items():
+        view_path = Path(view_cfg["path"])
+        if view_path.is_dir():
+            app.mount(
+                f"/dashboard/custom/{view_name}",
+                StaticFiles(directory=view_path, html=True),
+                name=f"custom-{view_name}",
+            )
 
     # SPA catch-all — serves index.html for all non-API routes
     if SPA_DIR.exists():

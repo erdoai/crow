@@ -53,6 +53,15 @@ def extract_auth_config(config: dict[str, Any]) -> dict[str, Any]:
     return _deep_merge(AUTH_DEFAULTS, raw)
 
 
+DASHBOARD_DEFAULTS: dict[str, Any] = {"views": {}}
+
+
+def extract_dashboard_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Extract dashboard section from config with defaults applied."""
+    raw = config.get("dashboard", {}) or {}
+    return _deep_merge(DASHBOARD_DEFAULTS, raw)
+
+
 def parse_config(path: str | Path) -> dict[str, Any]:
     """Parse crow.yml, resolve ${VAR} env references, and return config dict."""
     path = Path(path)

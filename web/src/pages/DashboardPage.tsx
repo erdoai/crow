@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { fetchJSON, type Conversation, type DashboardData } from '../api'
+import { fetchJSON, type Conversation, type DashboardData, type DashboardView } from '../api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { LogOut, Key, Brain, MessageSquare, Cpu, Download, Share2, Upload, Check, Link } from 'lucide-react'
+import { LogOut, Key, Brain, MessageSquare, Cpu, Download, Share2, Upload, Check, Link, LayoutDashboard } from 'lucide-react'
 
 export default function DashboardPage() {
   const navigate = useNavigate()
@@ -14,10 +14,12 @@ export default function DashboardPage() {
   const [newKey, setNewKey] = useState('')
   const [shareUrl, setShareUrl] = useState<Record<string, string>>({})
   const [copiedShare, setCopiedShare] = useState('')
+  const [views, setViews] = useState<DashboardView[]>([])
   const importRef = React.useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     fetchJSON<DashboardData>('/api/dashboard').then(setData)
+    fetchJSON<DashboardView[]>('/api/dashboard/views').then(setViews).catch(() => {})
   }, [])
 
   async function createApiKey(e: React.FormEvent) {
@@ -106,6 +108,11 @@ export default function DashboardPage() {
         <h1 className="text-xl font-bold tracking-tight">crow</h1>
         <div className="flex items-center gap-4">
           <span className="text-sm opacity-90">hi, {data.display_name}</span>
+          {views.map(v => (
+            <Button key={v.name} variant="ghost" size="sm" asChild className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10">
+              <a href={v.url}><LayoutDashboard className="h-4 w-4 mr-1" /> {v.label}</a>
+            </Button>
+          ))}
           <Button variant="ghost" size="sm" onClick={() => navigate('/chat')} className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10">
             <MessageSquare className="h-4 w-4 mr-1" /> chat
           </Button>

@@ -32,6 +32,7 @@ PUBLIC_PREFIXES: tuple[str, ...] = (
     "/assets/",
     "/shared/",
     "/api/shared/",
+    "/dashboard/custom/",
 )
 
 # Path prefixes where routes enforce their own auth via x-worker-key.

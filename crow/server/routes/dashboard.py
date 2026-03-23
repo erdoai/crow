@@ -21,6 +21,16 @@ async def onboarding_submit(form: "OnboardingForm", request: Request):
     return {"status": "ok", "redirect": "/dashboard"}
 
 
+@router.get("/api/dashboard/views")
+async def list_views(request: Request):
+    """Return configured custom dashboard views."""
+    views = getattr(request.app.state, "dashboard_config", {}).get("views", {})
+    return [
+        {"name": name, "label": cfg.get("label", name), "url": f"/dashboard/custom/{name}/"}
+        for name, cfg in views.items()
+    ]
+
+
 @router.get("/api/dashboard")
 async def dashboard_data(request: Request):
     """Return dashboard data as JSON for the SPA."""

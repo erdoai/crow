@@ -62,6 +62,12 @@ export interface KnowledgeEntry {
   agent_name: string
 }
 
+export interface DashboardView {
+  name: string
+  label: string
+  url: string
+}
+
 export interface DashboardData {
   agents: Agent[]
   conversations: Conversation[]

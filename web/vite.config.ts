@@ -18,6 +18,7 @@ export default defineConfig({
       '/agents': 'http://localhost:8100',
       '/conversations': 'http://localhost:8100',
       '/messages': 'http://localhost:8100',
+      '/dashboard/custom': 'http://localhost:8100',
       '/dashboard': 'http://localhost:8100',
       '/onboarding': 'http://localhost:8100',
       '/healthz': 'http://localhost:8100',
