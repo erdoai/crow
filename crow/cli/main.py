@@ -30,6 +30,20 @@ LOG_FMT = "%(asctime)s %(name)s %(levelname)s %(message)s"
 DEFAULT_URL = os.environ.get("CROW_SERVER_URL", "http://localhost:8100")
 
 
+def _auth_headers() -> dict[str, str]:
+    """Return auth headers if CROW_API_KEY is set."""
+    key = os.environ.get("CROW_API_KEY", "")
+    if key:
+        return {"Authorization": f"Bearer {key}"}
+    return {}
+
+
+def _http():
+    """Create an httpx client with auth headers."""
+    import httpx
+    return httpx.Client(headers=_auth_headers(), timeout=30.0)
+
+
 @app.command()
 def serve(
     host: str = typer.Option("0.0.0.0", help="Host to bind to"),
@@ -74,9 +88,7 @@ def message(
     ),
 ):
     """Send a message to an agent (via API gateway)."""
-    import httpx
-
-    resp = httpx.post(
+    resp = _http().post(
         f"{server_url}/messages",
         json={"text": text, "thread_id": f"cli-{agent}"},
     )
@@ -94,7 +106,7 @@ def status(
     import httpx
 
     try:
-        agents_data = httpx.get(f"{server_url}/agents").json()
+        agents_data = _http().get(f"{server_url}/agents").json()
         table = Table(title="Agents")
         table.add_column("Name")
         table.add_column("Description")
@@ -102,7 +114,7 @@ def status(
             table.add_row(a["name"], a["description"])
         console.print(table)
 
-        workers_data = httpx.get(f"{server_url}/workers").json()
+        workers_data = _http().get(f"{server_url}/workers").json()
         if workers_data:
             wtable = Table(title="Workers")
             wtable.add_column("ID")
@@ -141,7 +153,7 @@ def list_jobs(
         params: dict = {"limit": limit}
         if status_filter:
             params["status"] = status_filter
-        jobs_data = httpx.get(
+        jobs_data = _http().get(
             f"{server_url}/jobs", params=params
         ).json()
 
@@ -203,7 +215,7 @@ def agents_sync(
     # Get existing MCP servers to warn about missing references
     mcp_names: set[str] = set()
     try:
-        mcp_data = httpx.get(f"{server_url}/mcp-servers").json()
+        mcp_data = _http().get(f"{server_url}/mcp-servers").json()
         mcp_names = {s["name"] for s in mcp_data}
     except httpx.HTTPError:
         pass
@@ -233,7 +245,7 @@ def agents_sync(
             if dry_run:
                 table.add_row(rel_path, name, "[dim]would sync[/dim]", notes)
             else:
-                resp = httpx.post(
+                resp = _http().post(
                     f"{server_url}/agents/import",
                     content=content.encode(),
                     headers={"Content-Type": "text/markdown"},
@@ -266,7 +278,7 @@ def agents_export(
     folder_path.mkdir(parents=True, exist_ok=True)
 
     try:
-        agents_data = httpx.get(f"{server_url}/agents").json()
+        agents_data = _http().get(f"{server_url}/agents").json()
     except httpx.HTTPError as e:
         console.print(f"[red]Cannot reach server: {e}[/red]")
         raise typer.Exit(1)
@@ -278,7 +290,7 @@ def agents_export(
     for agent in agents_data:
         name = agent["name"]
         try:
-            resp = httpx.get(f"{server_url}/agents/{name}/export")
+            resp = _http().get(f"{server_url}/agents/{name}/export")
             resp.raise_for_status()
             out_path = folder_path / f"{name}.md"
             out_path.write_text(resp.text)
@@ -310,7 +322,7 @@ def mcp_add(
         if key and value:
             headers[key.strip()] = value.strip()
 
-    resp = httpx.post(
+    resp = _http().post(
         f"{server_url}/mcp-servers",
         json={"name": name, "url": url, "headers": headers},
     )
@@ -328,7 +340,7 @@ def mcp_list(
     import httpx
 
     try:
-        servers = httpx.get(f"{server_url}/mcp-servers").json()
+        servers = _http().get(f"{server_url}/mcp-servers").json()
         if not servers:
             console.print("[dim]No MCP servers configured[/dim]")
             return
@@ -359,7 +371,7 @@ def mcp_remove(
     """Remove an MCP server."""
     import httpx
 
-    resp = httpx.delete(f"{server_url}/mcp-servers/{name}")
+    resp = _http().delete(f"{server_url}/mcp-servers/{name}")
     resp.raise_for_status()
     console.print(f"[green]Removed:[/green] {name}")
 
@@ -382,7 +394,7 @@ def settings_import(
     with open(path) as f:
         body = f.read()
 
-    resp = httpx.post(
+    resp = _http().post(
         f"{server_url}/settings/import",
         content=body,
         headers={"Content-Type": "application/yaml"},
@@ -401,7 +413,7 @@ def settings_export(
     import httpx
     import yaml
 
-    resp = httpx.get(f"{server_url}/settings/export")
+    resp = _http().get(f"{server_url}/settings/export")
     resp.raise_for_status()
     console.print(yaml.dump(resp.json(), default_flow_style=False))
 
@@ -447,7 +459,7 @@ def dashboard_upload(
     }
 
     try:
-        resp = httpx.post(
+        resp = _http().post(
             f"{server_url}/api/dashboard/views",
             json=payload,
             timeout=30.0,
@@ -471,7 +483,7 @@ def dashboard_list(
     import httpx
 
     try:
-        views = httpx.get(f"{server_url}/api/dashboard/views").json()
+        views = _http().get(f"{server_url}/api/dashboard/views").json()
         if not views:
             console.print("[dim]No dashboard views configured[/dim]")
             return
@@ -505,7 +517,7 @@ def dashboard_delete(
     import httpx
 
     try:
-        resp = httpx.delete(f"{server_url}/api/dashboard/views/{name}")
+        resp = _http().delete(f"{server_url}/api/dashboard/views/{name}")
         resp.raise_for_status()
         console.print(f"[green]Deleted:[/green] {name}")
     except httpx.HTTPStatusError as e:
