@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from crow.auth.middleware import AuthMiddleware
 from crow.config.loader import auto_import_if_empty, extract_auth_config, load_config
 from crow.config.settings import Settings
 from crow.db.database import Database
@@ -90,5 +91,8 @@ def create_app() -> FastAPI:
     # Auth + dashboard
     app.include_router(auth.router)
     app.include_router(dashboard.router)
+
+    # Auth middleware — enforces authentication on all routes not in the allowlist
+    app.add_middleware(AuthMiddleware)
 
     return app
