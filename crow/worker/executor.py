@@ -93,6 +93,59 @@ BUILTIN_TOOLS = {
             "required": ["knowledge_id"],
         },
     },
+    "create_agent": {
+        "name": "create_agent",
+        "description": (
+            "Create or update an agent. Use when the user asks"
+            " to set up a new agent or modify an existing one."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Agent identifier (lowercase, no spaces)",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "What this agent does",
+                },
+                "prompt_template": {
+                    "type": "string",
+                    "description": "System prompt for the agent",
+                },
+                "tools": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Tool names: delegate_to_agent,"
+                        " knowledge_search, knowledge_write,"
+                        " create_agent, list_agents, delete_agent"
+                    ),
+                },
+            },
+            "required": ["name", "description", "prompt_template"],
+        },
+    },
+    "list_agents": {
+        "name": "list_agents",
+        "description": "List all configured agents with their descriptions and tools.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    "delete_agent": {
+        "name": "delete_agent",
+        "description": "Delete an agent by name.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Agent name to delete"},
+            },
+            "required": ["name"],
+        },
+    },
 }
 
 
@@ -158,6 +211,38 @@ async def execute_builtin(
                 f"{server_url}/agents/{job['agent_name']}"
                 f"/knowledge/{kid}/archive",
                 headers=headers,
+                timeout=10,
+            )
+            return resp.text
+
+    elif tool_name == "create_agent":
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{server_url}/agents",
+                json={
+                    "name": tool_input["name"],
+                    "description": tool_input["description"],
+                    "prompt_template": tool_input.get("prompt_template", ""),
+                    "tools": tool_input.get("tools", []),
+                    "mcp_servers": tool_input.get("mcp_servers", []),
+                    "knowledge_areas": tool_input.get("knowledge_areas", []),
+                },
+                timeout=10,
+            )
+            return resp.text
+
+    elif tool_name == "list_agents":
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{server_url}/agents",
+                timeout=10,
+            )
+            return resp.text
+
+    elif tool_name == "delete_agent":
+        async with httpx.AsyncClient() as client:
+            resp = await client.delete(
+                f"{server_url}/agents/{tool_input['name']}",
                 timeout=10,
             )
             return resp.text
