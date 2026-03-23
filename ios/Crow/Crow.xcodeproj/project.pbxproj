@@ -13,7 +13,6 @@
 		A10000004 /* CrowAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000004 /* CrowAPI.swift */; };
 		A10000005 /* SSEClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000005 /* SSEClient.swift */; };
 		A10000006 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000006 /* ChatView.swift */; };
-		A10000007 /* ConversationListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000007 /* ConversationListView.swift */; };
 		A1000000A /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000B /* MainView.swift */; };
 		A10000008 /* ServerListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000008 /* ServerListView.swift */; };
 		A10000009 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000009 /* Assets.xcassets */; };
@@ -28,7 +27,6 @@
 		A20000004 /* CrowAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrowAPI.swift; sourceTree = "<group>"; };
 		A20000005 /* SSEClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSEClient.swift; sourceTree = "<group>"; };
 		A20000006 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
-		A20000007 /* ConversationListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationListView.swift; sourceTree = "<group>"; };
 		A20000008 /* ServerListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerListView.swift; sourceTree = "<group>"; };
 		A2000000B /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
 		A2000000C /* AgentDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDetailView.swift; sourceTree = "<group>"; };
@@ -82,7 +80,6 @@
 			children = (
 				A2000000C /* AgentDetailView.swift */,
 				A20000006 /* ChatView.swift */,
-				A20000007 /* ConversationListView.swift */,
 				A2000000D /* LearningsView.swift */,
 				A2000000B /* MainView.swift */,
 				A20000008 /* ServerListView.swift */,
@@ -182,7 +179,6 @@
 				A10000004 /* CrowAPI.swift in Sources */,
 				A10000005 /* SSEClient.swift in Sources */,
 				A10000006 /* ChatView.swift in Sources */,
-				A10000007 /* ConversationListView.swift in Sources */,
 				A10000008 /* ServerListView.swift in Sources */,
 				A1000000A /* MainView.swift in Sources */,
 				A1000000B /* AgentDetailView.swift in Sources */,
