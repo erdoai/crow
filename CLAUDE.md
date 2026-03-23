@@ -71,6 +71,137 @@ crow agents sync ./agents          # push your agent .md files to server
 - **`.gitignore`** — ensures .env is not committed
 - **`agents/hello.md`** — sample agent to get started
 
+### Typical workflow from an external project
+
+```bash
+pip install crow-agents
+crow init                          # creates crow.yml, .env, agents/
+# Edit .env — set CROW_DATABASE_URL and CROW_ANTHROPIC_API_KEY
+# Edit crow.yml — define agents, MCP servers, dashboard views
+# Create agent .md files in agents/
+
+# If running your own server:
+crow serve
+crow worker
+
+# If pointing at a remote server (e.g. Railway):
+crow agents sync ./agents --url https://your-crow-server.railway.app
+crow mcp add my-tools https://my-mcp-server.railway.app/mcp --url https://your-crow-server.railway.app
+```
+
+### Agent markdown format
+
+Agents are markdown files with YAML frontmatter. The frontmatter defines metadata and capabilities; the body is the system prompt.
+
+```markdown
+---
+name: agent-name
+description: "What this agent does"
+tools: [knowledge_search, knowledge_write]
+mcp_servers: [my-tools]
+knowledge_areas: [my-area]
+---
+
+Your system prompt here. This is sent as the system message when the agent runs.
+You can use multiple paragraphs, lists, code blocks — any markdown.
+```
+
+**Frontmatter fields:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | yes | Unique identifier (kebab-case) |
+| `description` | yes | Short description shown in dashboard and used by PA for routing |
+| `tools` | no | List of built-in tools to enable |
+| `mcp_servers` | no | List of MCP server names (must match names in `crow.yml` or registered via CLI) |
+| `knowledge_areas` | no | Scopes for PARA knowledge reads/writes |
+
+**Available built-in tools:** `delegate_to_agent`, `knowledge_search`, `knowledge_write`, `knowledge_archive`, `create_agent`, `list_agents`, `delete_agent`
+
+### crow.yml reference
+
+```yaml
+# Agent definitions (alternative to .md files — these are loaded into DB on startup)
+agents:
+  assistant:
+    description: "General purpose assistant"
+    prompt: assistant.md.j2           # Jinja2 template in crow/agents/prompts/
+    tools: [knowledge_search]
+    mcp: [web-search]
+    knowledge_areas: [general]
+
+# MCP server connections — tools discovered at runtime via HTTP
+mcp:
+  web-search:
+    url: https://mcp.example.com/v1
+    headers:
+      Authorization: "Bearer ${MY_API_KEY}"
+
+# Custom dashboard views served alongside the built-in UI
+dashboard:
+  views:
+    trading:
+      label: Trading Floor
+      path: ./dashboards/trading      # directory with index.html + static assets
+
+# Auth (optional — disabled by default)
+auth:
+  enabled: true
+  session_secret: ${SESSION_SECRET}
+  api_key: ${CROW_API_KEY}
+  resend:
+    api_key: ${RESEND_API_KEY}
+    from: ${RESEND_FROM}
+```
+
+Secrets use `${VAR}` syntax, resolved from environment at runtime. In production, the entire file can be delivered via the `CROW_CONFIG` env var.
+
+### Custom dashboard API contract
+
+Custom dashboards are plain HTML/JS/CSS served from a directory. They connect to Crow via these endpoints:
+
+**SSE (real-time updates):**
+```
+GET /api/state/stream                  # all state changes + agent events
+GET /api/state/stream?keys=a,b        # filter by key
+```
+Events use the SSE `event:` field (`state.updated`, `message.response`, `job.completed`, etc.) so clients can use `addEventListener` to filter.
+
+**State (key/value store):**
+```
+POST /api/state/{key}                  # write: {"data": {...}}
+GET  /api/state/{key}                  # read current value
+```
+
+**Agents and messages:**
+```
+POST /api/messages                     # trigger an agent: {"agent": "name", "content": "..."}
+GET  /api/agents                       # list agents
+GET  /api/jobs                         # list jobs
+GET  /api/conversations/{id}/messages  # conversation history
+```
+
+All endpoints require auth (session cookie or `Authorization: Bearer <api-key>` header) when auth is enabled.
+
+### MCP server pattern
+
+External projects host their own MCP servers. Crow connects as an HTTP client and discovers tools at runtime — no tool registration or schema needed in crow.yml.
+
+```bash
+# Register an MCP server
+crow mcp add my-tools https://my-mcp-server.example.com/mcp
+
+# With auth (if the MCP server requires a bearer token)
+# Add to crow.yml:
+#   mcp:
+#     my-tools:
+#       url: https://my-mcp-server.example.com/mcp
+#       headers:
+#         Authorization: "Bearer ${MY_TOOLS_API_KEY}"
+```
+
+MCP servers can be written in any language. Workers call `tools/list` on each server at job start to discover available tools, then pass them to Claude alongside built-in tools. The MCP server is responsible for its own auth — Crow forwards the configured headers on every request.
+
 ## Development (contributing to crow itself)
 
 ```bash

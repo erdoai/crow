@@ -79,7 +79,7 @@ agents:
 
 Each agent gets:
 - A **system prompt** (Jinja2 template in `crow/agents/prompts/`)
-- **Built-in tools** — `delegate_to_agent`, `knowledge_search`, `knowledge_write`, `knowledge_archive`
+- **Built-in tools** — `delegate_to_agent`, `knowledge_search`, `knowledge_write`, `knowledge_archive`, `create_agent`, `list_agents`, `delete_agent`
 - **MCP tools** — dynamically discovered from connected MCP servers
 - **PARA knowledge** — persistent learnings in Postgres (Projects, Areas, Resources, Archives)
 
@@ -165,6 +165,48 @@ crow mcp remove <name>                 # remove MCP server
 crow settings import crow.yml       # import config
 crow settings export                # export config
 ```
+
+## Using Crow from another project
+
+You don't need to clone this repo. Install, init, and point at your server:
+
+```bash
+pip install crow-agents
+crow init                                # creates crow.yml, .env, agents/
+# Edit .env — set CROW_DATABASE_URL and CROW_ANTHROPIC_API_KEY
+# Create agents as .md files with YAML frontmatter:
+```
+
+```markdown
+---
+name: my-agent
+description: "What this agent does"
+tools: [knowledge_search, knowledge_write]
+mcp_servers: [my-tools]
+knowledge_areas: [my-area]
+---
+
+Your system prompt here...
+```
+
+```bash
+crow serve                               # start server
+crow worker                              # start worker
+crow agents sync ./agents                # push agents to server
+crow mcp add my-tools https://my-mcp/mcp # register external tools
+```
+
+**API for custom dashboards and integrations:**
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/state/stream` | SSE stream — real-time state changes + agent events |
+| `POST/GET /api/state/{key}` | Read/write key/value state |
+| `POST /api/messages` | Trigger an agent |
+| `GET /api/agents` | List agents |
+| `GET /api/jobs` | List jobs |
+
+See [CLAUDE.md](CLAUDE.md) for the full integration guide: agent markdown format, crow.yml reference, dashboard contract, and MCP server pattern.
 
 ## Gateways
 
