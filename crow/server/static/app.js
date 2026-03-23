@@ -41,6 +41,7 @@ document.querySelectorAll('.otp-digit').forEach(input => {
         });
         if (digits.length === 6) {
             document.querySelector(`.otp-digit[data-idx="5"]`).focus();
+            verifyCode();
         }
     });
 });

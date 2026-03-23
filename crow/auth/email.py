@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 import httpx
+from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -37,5 +38,8 @@ async def send_verification_code(
         )
         if resp.status_code >= 400:
             logger.error("Resend API error %d: %s", resp.status_code, resp.text)
-            raise RuntimeError(f"Failed to send verification email: {resp.status_code}")
+            raise HTTPException(
+                status_code=502,
+                detail="Failed to send verification email. Please try again.",
+            )
         logger.info("Verification email sent to %s", email)
