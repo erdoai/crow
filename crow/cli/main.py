@@ -25,7 +25,7 @@ app.add_typer(settings_app, name="settings")
 
 console = Console()
 LOG_FMT = "%(asctime)s %(name)s %(levelname)s %(message)s"
-DEFAULT_URL = "http://localhost:8100"
+DEFAULT_URL = os.environ.get("CROW_SERVER_URL", "http://localhost:8100")
 
 
 @app.command()
@@ -49,7 +49,7 @@ def serve(
 @app.command()
 def worker(
     server_url: str = typer.Option(
-        DEFAULT_URL, "--url", help="Crow server URL"
+        DEFAULT_URL, "--url", help="Crow server URL (or set CROW_SERVER_URL)"
     ),
 ):
     """Start a crow worker that polls the server for jobs."""
