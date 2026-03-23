@@ -7,7 +7,9 @@ import logging
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
+from crow.auth.dependencies import get_current_user
 from crow.events.types import MESSAGE_RESPONSE, Event
+from crow.server.routes.conversations import _verify_conversation_access
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +19,9 @@ router = APIRouter()
 @router.get("/conversations/{conversation_id}/stream")
 async def stream_conversation(conversation_id: str, request: Request):
     """SSE stream of new messages in a conversation."""
+    user = await get_current_user(request)
+    await _verify_conversation_access(request, conversation_id, user)
+
     bus = request.app.state.bus
     queue: asyncio.Queue[Event] = asyncio.Queue()
 

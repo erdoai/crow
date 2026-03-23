@@ -30,14 +30,16 @@ class APIGateway(Gateway):
         gateway_thread_id: str,
         text: str,
         agent: str | None = None,
+        user_id: str | None = None,
     ) -> None:
         """Called by the FastAPI route."""
         if not self._bus:
             return
-        data: dict[str, str] = {
+        data: dict[str, str | None] = {
             "gateway": "api",
             "gateway_thread_id": gateway_thread_id,
             "text": text,
+            "user_id": user_id,
         }
         if agent:
             data["agent"] = agent

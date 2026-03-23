@@ -197,23 +197,44 @@ class Database:
             job_id,
         )
 
-    async def get_job(self, job_id: str) -> dict | None:
-        row = await self._pool.fetchrow("SELECT * FROM jobs WHERE id = $1", job_id)
+    async def get_job(self, job_id: str, user_id: str | None = None) -> dict | None:
+        if user_id:
+            row = await self._pool.fetchrow(
+                """SELECT j.* FROM jobs j
+                   JOIN conversations c ON j.conversation_id = c.id
+                   WHERE j.id = $1 AND c.user_id = $2""",
+                job_id,
+                user_id,
+            )
+        else:
+            row = await self._pool.fetchrow(
+                "SELECT * FROM jobs WHERE id = $1", job_id
+            )
         return dict(row) if row else None
 
     async def list_jobs(
-        self, status: str | None = None, limit: int = 50
+        self, status: str | None = None, limit: int = 50, user_id: str | None = None
     ) -> list[dict]:
+        conditions = []
+        params: list = []
+        idx = 1
+        join = ""
+
+        if user_id:
+            join = " JOIN conversations c ON j.conversation_id = c.id"
+            conditions.append(f"c.user_id = ${idx}")
+            params.append(user_id)
+            idx += 1
+
         if status:
-            rows = await self._pool.fetch(
-                "SELECT * FROM jobs WHERE status = $1 ORDER BY created_at DESC LIMIT $2",
-                status,
-                limit,
-            )
-        else:
-            rows = await self._pool.fetch(
-                "SELECT * FROM jobs ORDER BY created_at DESC LIMIT $1", limit
-            )
+            conditions.append(f"j.status = ${idx}")
+            params.append(status)
+            idx += 1
+
+        where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+        params.append(limit)
+        query = f"SELECT j.* FROM jobs j{join}{where} ORDER BY j.created_at DESC LIMIT ${idx}"
+        rows = await self._pool.fetch(query, *params)
         return [dict(r) for r in rows]
 
     # -- Workers --

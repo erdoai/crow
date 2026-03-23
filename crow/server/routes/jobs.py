@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel
 
+from crow.auth.dependencies import get_current_user
 from crow.events.types import MESSAGE_RESPONSE, Event
 
 router = APIRouter(prefix="/jobs")
@@ -12,6 +13,13 @@ def _check_worker_key(request: Request, x_worker_key: str = Header()) -> None:
     expected = request.app.state.settings.worker_api_key
     if x_worker_key != expected:
         raise HTTPException(status_code=401, detail="Invalid worker key")
+
+
+def _user_id_from_request(request, user):
+    auth_enabled = request.app.state.auth_config.get("enabled", True)
+    if auth_enabled and user and user["id"] != "default":
+        return user["id"]
+    return None
 
 
 # -- Public --
@@ -24,15 +32,19 @@ async def list_jobs(
     limit: int = 50,
 ):
     """List recent jobs."""
+    user = await get_current_user(request)
+    uid = _user_id_from_request(request, user)
     db = request.app.state.db
-    return await db.list_jobs(status=status, limit=limit)
+    return await db.list_jobs(status=status, limit=limit, user_id=uid)
 
 
 @router.get("/{job_id}")
 async def get_job(job_id: str, request: Request):
     """Get a specific job."""
+    user = await get_current_user(request)
+    uid = _user_id_from_request(request, user)
     db = request.app.state.db
-    job = await db.get_job(job_id)
+    job = await db.get_job(job_id, user_id=uid)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return job

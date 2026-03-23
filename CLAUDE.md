@@ -188,7 +188,7 @@ GET  /api/conversations/{id}/messages  # conversation history
 
 All endpoints are **same-origin** when the dashboard is served by Crow (at `/dashboard/custom/{name}/`), so no CORS config is needed — just use relative paths (`/api/state/stream`) in your JS. Auth is handled by the session cookie automatically.
 
-When auth is enabled, API endpoints require a session cookie or `Authorization: Bearer <api-key>` header.
+All endpoints require auth (session cookie or `Authorization: Bearer <api-key>` header). Conversations, messages, jobs, and state are scoped to the authenticated user.
 
 ### MCP server pattern
 
@@ -250,18 +250,18 @@ Configured in `crow.yml` under the `mcp:` section. Each server has a URL and opt
 
 ### Auth
 
-Auth is optional, configured in the `auth` section of `crow.yml`:
+Auth is **enabled by default**. All API endpoints are user-scoped — conversations, messages, jobs, knowledge, and state are isolated per-user. Configured in the `auth` section of `crow.yml`:
 ```yaml
 auth:
-  enabled: true                     # false = single-user, no login
+  enabled: true                     # false = single-user, no login (not recommended)
   session_secret: ${SESSION_SECRET}
-  api_key: ${CROW_API_KEY}          # static API key (when auth disabled)
+  api_key: ${CROW_API_KEY}          # static API key fallback
   resend:
     api_key: ${RESEND_API_KEY}      # email OTP via Resend
     from: ${RESEND_FROM}             # defaults to "crow <noreply@erdo.ai>"
 ```
 
-When enabled: email OTP sign-in → onboarding ("what should I call you?") → dashboard with per-user conversations, knowledge, phone links, API keys. When disabled: dashboard loads directly, single-user mode.
+When enabled: email OTP sign-in → onboarding ("what should I call you?") → dashboard with per-user conversations, knowledge, phone links, API keys. When disabled: dashboard loads directly, single-user mode (all data shared).
 
 ### State channel
 
