@@ -22,10 +22,10 @@
             <h2 class="section-title">agents</h2>
             <div class="card-grid">
                 {% for agent in agents %}
-                <div class="card">
+                <a href="/chat" class="card card-link" onclick="event.preventDefault(); startChatWithAgent('{{ agent.name }}')">
                     <h3 class="card-title">{{ agent.name }}</h3>
                     <p class="card-desc">{{ agent.description }}</p>
-                </div>
+                </a>
                 {% endfor %}
                 {% if not agents %}
                 <p class="empty">no agents configured</p>
@@ -82,13 +82,13 @@
             {% if conversations %}
             <div class="list">
                 {% for c in conversations %}
-                <div class="list-item">
+                <a href="/chat/{{ c.id }}" class="list-item list-item-link">
                     <div>
                         <span class="badge">{{ c.gateway }}</span>
                         <span class="mono">{{ c.gateway_thread_id }}</span>
                     </div>
                     <span class="muted">{{ c.updated_at.strftime('%b %d, %H:%M') if c.updated_at else '' }}</span>
-                </div>
+                </a>
                 {% endfor %}
             </div>
             {% else %}
