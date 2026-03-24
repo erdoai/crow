@@ -16,5 +16,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS dashboard_views_name_user
 CREATE UNIQUE INDEX IF NOT EXISTS dashboard_views_name_global
     ON dashboard_views (name) WHERE user_id IS NULL;
 
--- Agent defs: add user scoping
+-- Agent defs: add user scoping + fix PK
 ALTER TABLE agent_defs ADD COLUMN IF NOT EXISTS user_id TEXT;
+ALTER TABLE agent_defs DROP CONSTRAINT IF EXISTS agent_defs_pkey;
+ALTER TABLE agent_defs ADD COLUMN IF NOT EXISTS id SERIAL;
+ALTER TABLE agent_defs ADD PRIMARY KEY (id);
+CREATE UNIQUE INDEX IF NOT EXISTS agent_defs_name_user
+    ON agent_defs (name, user_id) WHERE user_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS agent_defs_name_global
+    ON agent_defs (name) WHERE user_id IS NULL;
