@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { MessageSquarePlus } from 'lucide-react'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { cn } from '@/lib/utils'
 
 export default function ChatPage() {
@@ -71,9 +72,12 @@ export default function ChatPage() {
           >
             crow
           </button>
-          <Button variant="ghost" size="icon" onClick={() => navigate('/chat')}>
-            <MessageSquarePlus className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center">
+            <ThemeToggle />
+            <Button variant="ghost" size="icon" onClick={() => navigate('/chat')}>
+              <MessageSquarePlus className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         <div className="p-3">

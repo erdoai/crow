@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { LogOut, Key, Brain, MessageSquare, Cpu, Download, Upload, Check, Link, LayoutDashboard } from 'lucide-react'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 export default function DashboardPage() {
   const navigate = useNavigate()
@@ -118,6 +119,7 @@ export default function DashboardPage() {
           <Button variant="ghost" size="sm" onClick={() => navigate('/chat')} className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10">
             <MessageSquare className="h-4 w-4 mr-1" /> chat
           </Button>
+          <ThemeToggle className="text-primary-foreground/70 hover:text-primary-foreground [&_button]:hover:bg-white/10" />
           {data.auth_enabled && (
             <Button variant="ghost" size="sm" onClick={logout} className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10">
               <LogOut className="h-4 w-4" />
