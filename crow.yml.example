@@ -74,3 +74,4 @@ mcp: {}
 #   schedule           — Schedule a future or recurring job
 #   progress_update    — Publish real-time progress to dashboards
 #   create_attachment  — Attach a file to the agent's response
+#   execute_code       — Run Python code in an E2B sandbox

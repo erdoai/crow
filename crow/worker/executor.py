@@ -214,6 +214,30 @@ BUILTIN_TOOLS = {
             "required": ["status"],
         },
     },
+    "execute_code": {
+        "name": "execute_code",
+        "description": (
+            "Execute Python code in a sandboxed environment (E2B). "
+            "Use for data analysis, web scraping, file processing, "
+            "API calls, or any computation. Packages can be installed "
+            "with pip inside the code (e.g. subprocess or !pip install)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "description": "Python code to execute",
+                },
+                "packages": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Pip packages to install before running (e.g. ['requests', 'beautifulsoup4'])",
+                },
+            },
+            "required": ["code"],
+        },
+    },
     "create_attachment": {
         "name": "create_attachment",
         "description": (
@@ -463,6 +487,42 @@ async def execute_builtin(
             else:
                 kind = f"in {payload.get('delay_seconds')}s"
             return f"Scheduled {tool_input['agent_name']} ({kind}), id={data['id']}"
+
+    elif tool_name == "execute_code":
+        try:
+            from e2b_code_interpreter import AsyncSandbox
+        except ImportError:
+            return "e2b-code-interpreter package not installed. Run: pip install e2b-code-interpreter"
+
+        code = tool_input["code"]
+        packages = tool_input.get("packages") or []
+
+        try:
+            sandbox = await AsyncSandbox.create(timeout=120)
+            try:
+                if packages:
+                    pip_cmd = f"pip install {' '.join(packages)}"
+                    await sandbox.commands.run(pip_cmd, timeout=60)
+
+                execution = await sandbox.run_code(code, timeout=90)
+
+                parts = []
+                if execution.logs.stdout:
+                    parts.append("stdout:\n" + "\n".join(execution.logs.stdout))
+                if execution.logs.stderr:
+                    parts.append("stderr:\n" + "\n".join(execution.logs.stderr))
+                if execution.error:
+                    parts.append(f"error: {execution.error.name}: {execution.error.value}")
+                if execution.results:
+                    for r in execution.results:
+                        if hasattr(r, "text") and r.text:
+                            parts.append(f"result: {r.text}")
+
+                return "\n".join(parts) if parts else "(no output)"
+            finally:
+                await sandbox.kill()
+        except Exception as e:
+            return f"Code execution failed: {e}"
 
     elif tool_name == "create_attachment":
         import base64

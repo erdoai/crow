@@ -79,7 +79,7 @@ agents:
 
 Each agent gets:
 - A **system prompt** (Jinja2 template in `crow/agents/prompts/`)
-- **Built-in tools** — `delegate_to_agent`, `delegate_parallel`, `knowledge_search`, `knowledge_write`, `knowledge_archive`, `create_agent`, `list_agents`, `delete_agent`, `schedule`, `progress_update`, `create_attachment`
+- **Built-in tools** — `delegate_to_agent`, `delegate_parallel`, `knowledge_search`, `knowledge_write`, `knowledge_archive`, `create_agent`, `list_agents`, `delete_agent`, `schedule`, `progress_update`, `create_attachment`, `execute_code`
 - **MCP tools** — dynamically discovered from connected MCP servers
 - **PARA knowledge** — persistent learnings in Postgres (Projects, Areas, Resources, Archives)
 
@@ -288,6 +288,22 @@ tools: [knowledge_search, create_attachment]
 
 You write reports and attach them as downloadable files.
 ```
+
+## Code execution
+
+Agents can run Python code in sandboxed [E2B](https://e2b.dev) environments using the `execute_code` built-in tool. No MCP server needed — sandboxes are created on demand and torn down after execution.
+
+```markdown
+---
+name: analyst
+description: "Runs data analysis scripts"
+tools: [execute_code, knowledge_search]
+---
+
+You are a data analyst. Write and execute Python code to answer questions.
+```
+
+The tool supports installing pip packages before execution and returns stdout, stderr, and results. Set `E2B_API_KEY` in your environment.
 
 ## Gateways
 

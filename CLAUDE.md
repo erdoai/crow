@@ -135,7 +135,7 @@ mcp_servers:
 | `knowledge_areas` | no | Scopes for PARA knowledge reads/writes |
 | `max_iterations` | no | Max tool-use loops for this agent (defaults to server default) |
 
-**Available built-in tools:** `delegate_to_agent`, `delegate_parallel`, `knowledge_search`, `knowledge_write`, `knowledge_archive`, `create_agent`, `list_agents`, `delete_agent`, `schedule`, `progress_update`, `create_attachment`
+**Available built-in tools:** `delegate_to_agent`, `delegate_parallel`, `knowledge_search`, `knowledge_write`, `knowledge_archive`, `create_agent`, `list_agents`, `delete_agent`, `schedule`, `progress_update`, `create_attachment`, `execute_code`
 
 ### Sub-agents and orchestration
 
@@ -233,6 +233,14 @@ POST /jobs/{job_id}/attachments        # worker-facing: create attachment during
 GET    /scheduled-jobs          # list scheduled jobs (user-scoped)
 DELETE /scheduled-jobs/{id}     # cancel a scheduled job
 ```
+
+### Code execution (E2B)
+
+**`execute_code`** — runs Python code in a sandboxed [E2B](https://e2b.dev) environment. Sandboxes are created on demand (120s timeout), execute the code, and are torn down. No MCP server needed.
+
+Parameters: `code` (required), `packages` (optional list of pip packages to install before running).
+
+Returns stdout, stderr, errors, and cell results. Requires `E2B_API_KEY` environment variable on the worker.
 
 ### Custom dashboard API contract
 
