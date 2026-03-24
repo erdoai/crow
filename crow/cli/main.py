@@ -90,7 +90,7 @@ def message(
     """Send a message to an agent (via API gateway)."""
     resp = _http().post(
         f"{server_url}/messages",
-        json={"text": text, "thread_id": f"cli-{agent}"},
+        json={"text": text, "agent": agent, "thread_id": f"cli-{agent}"},
     )
     resp.raise_for_status()
     console.print(f"[green]Message sent[/green]: {text}")
