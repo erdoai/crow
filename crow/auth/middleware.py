@@ -20,6 +20,8 @@ PUBLIC_PATHS: set[str] = {
     "/healthz",
     "/auth/send-code",
     "/auth/verify",
+    "/auth/verify-passphrase",
+    "/auth/gate-status",
     "/auth/logout",
     "/login",
     "/",

@@ -1,15 +1,50 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { fetchJSON } from '../api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
+type Step = 'loading' | 'message' | 'passphrase' | 'email' | 'code'
+
 export default function LoginPage({ onSuccess }: { onSuccess: () => void }) {
-  const [step, setStep] = useState<'email' | 'code'>('email')
+  const [step, setStep] = useState<Step>('loading')
+  const [gateMessage, setGateMessage] = useState('')
+  const [passphrase, setPassphrase] = useState('')
   const [email, setEmail] = useState('')
   const [error, setError] = useState('')
   const [status, setStatus] = useState('')
   const [digits, setDigits] = useState(['', '', '', '', '', ''])
   const digitRefs = useRef<(HTMLInputElement | null)[]>([])
+
+  useEffect(() => {
+    fetchJSON<{ instance_gate: boolean; instance_message: string; gate_passed: boolean }>('/auth/gate-status')
+      .then(data => {
+        if (!data.instance_gate || data.gate_passed) {
+          setStep('email')
+        } else if (data.instance_message) {
+          setGateMessage(data.instance_message)
+          setStep('message')
+        } else {
+          setStep('passphrase')
+        }
+      })
+      .catch(() => setStep('email'))
+  }, [])
+
+  async function submitPassphrase(e: React.FormEvent) {
+    e.preventDefault()
+    setError('')
+    if (!passphrase.trim()) { setError('please enter the passphrase'); return }
+
+    try {
+      await fetchJSON('/auth/verify-passphrase', {
+        method: 'POST',
+        body: JSON.stringify({ passphrase: passphrase.trim() }),
+      })
+      setStep('email')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'incorrect passphrase')
+    }
+  }
 
   async function sendCode(e: React.FormEvent) {
     e.preventDefault()
@@ -79,21 +114,50 @@ export default function LoginPage({ onSuccess }: { onSuccess: () => void }) {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-950 via-purple-800 to-purple-600 p-4">
       <div className="bg-card rounded-xl p-8 w-full max-w-sm shadow-2xl flex flex-col gap-4">
         <h1 className="text-3xl font-bold text-primary tracking-tight">crow</h1>
-        <p className="text-sm text-muted-foreground">sign in to continue</p>
 
-        {step === 'email' ? (
-          <form onSubmit={sendCode} className="flex flex-col gap-3">
+        {step === 'loading' && (
+          <p className="text-sm text-muted-foreground">loading...</p>
+        )}
+
+        {step === 'message' && (
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground whitespace-pre-wrap">{gateMessage}</p>
+            <Button onClick={() => setStep('passphrase')} className="w-full">next</Button>
+          </div>
+        )}
+
+        {step === 'passphrase' && (
+          <form onSubmit={submitPassphrase} className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">enter the instance passphrase</p>
             <Input
-              type="email"
-              placeholder="your email"
-              autoComplete="email"
+              type="password"
+              placeholder="passphrase"
               autoFocus
-              value={email}
-              onChange={e => setEmail(e.target.value)}
+              value={passphrase}
+              onChange={e => setPassphrase(e.target.value)}
             />
-            <Button type="submit" className="w-full">send code</Button>
+            <Button type="submit" className="w-full">continue</Button>
           </form>
-        ) : (
+        )}
+
+        {step === 'email' && (
+          <>
+            <p className="text-sm text-muted-foreground">sign in to continue</p>
+            <form onSubmit={sendCode} className="flex flex-col gap-3">
+              <Input
+                type="email"
+                placeholder="your email"
+                autoComplete="email"
+                autoFocus
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+              />
+              <Button type="submit" className="w-full">send code</Button>
+            </form>
+          </>
+        )}
+
+        {step === 'code' && (
           <form onSubmit={e => { e.preventDefault(); verify() }} className="flex flex-col gap-3">
             <p className="text-sm text-muted-foreground text-center">
               enter the 6-digit code sent to <span className="font-medium text-foreground">{email}</span>

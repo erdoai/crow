@@ -29,6 +29,8 @@ auth:
   enabled: true
   session_secret: ${SESSION_SECRET}
   api_key: ${CROW_API_KEY}
+  # passphrase: ${CROW_PASSPHRASE}
+  # instance_message: "Welcome! Enter the passphrase to continue."
 """
 
 ENV_TEMPLATE = """\
@@ -45,6 +47,9 @@ CROW_ANTHROPIC_API_KEY=
 SESSION_SECRET={session_secret}
 CROW_API_KEY={api_key}
 CROW_WORKER_API_KEY={worker_key}
+
+# Instance passphrase gate (optional — uncomment to require a shared passphrase before registration)
+# CROW_PASSPHRASE=
 """
 
 SAMPLE_AGENT = """\

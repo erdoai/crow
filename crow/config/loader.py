@@ -16,6 +16,8 @@ _ENV_VAR_RE = re.compile(r"\$\{([^}]+)\}")
 
 AUTH_DEFAULTS: dict[str, Any] = {
     "enabled": True,
+    "passphrase": "",
+    "instance_message": "",
     "session_secret": "dev-secret-change-in-prod",
     "api_key": "",
     "resend": {

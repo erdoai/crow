@@ -191,6 +191,8 @@ auth:
   enabled: true
   session_secret: ${SESSION_SECRET}
   api_key: ${CROW_API_KEY}
+  passphrase: ${CROW_PASSPHRASE}                    # optional — gate registration behind a shared passphrase
+  instance_message: "Welcome! Enter the passphrase." # optional — shown before passphrase prompt
   resend:
     api_key: ${RESEND_API_KEY}
     from: ${RESEND_FROM}
@@ -293,12 +295,16 @@ auth:
   enabled: true                     # false = single-user, no login (not recommended)
   session_secret: ${SESSION_SECRET}
   api_key: ${CROW_API_KEY}          # static API key fallback
+  passphrase: ${CROW_PASSPHRASE}    # optional — require shared passphrase before registration
+  instance_message: "Welcome!"      # optional — shown before passphrase prompt
   resend:
     api_key: ${RESEND_API_KEY}      # email OTP via Resend
     from: ${RESEND_FROM}             # defaults to "crow <noreply@erdo.ai>"
 ```
 
 When enabled: email OTP sign-in → onboarding ("what should I call you?") → dashboard with per-user conversations, knowledge, phone links, API keys. When disabled: dashboard loads directly, single-user mode (all data shared).
+
+**Instance passphrase gate:** Set `passphrase` in the auth config (via `CROW_PASSPHRASE` env var) to require a shared passphrase before users can register. Useful for web-exposed instances. Optionally set `instance_message` to show a welcome message before the passphrase prompt. When configured, the login flow becomes: instance message → passphrase → email OTP → onboarding. The passphrase is validated server-side and a 24-hour gate cookie is issued so returning users don't re-enter it. API key and worker auth are unaffected.
 
 ### State channel
 

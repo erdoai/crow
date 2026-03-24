@@ -1,8 +1,9 @@
-"""Auth routes: email OTP send/verify, logout."""
+"""Auth routes: email OTP send/verify, logout, instance passphrase gate."""
 
 import secrets
 from datetime import UTC, datetime, timedelta
 
+import jwt
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr
@@ -31,6 +32,87 @@ async def get_me(request: Request):
         "auth_enabled": auth_config.get("enabled", True),
     }
 
+
+# ---------------------------------------------------------------------------
+# Instance passphrase gate
+# ---------------------------------------------------------------------------
+
+GATE_COOKIE_LIFETIME_HOURS = 24
+
+
+def _check_gate_cookie(request: Request) -> bool:
+    """Return True if no passphrase is configured, or if a valid gate cookie is present."""
+    auth_config = request.app.state.auth_config
+    passphrase = auth_config.get("passphrase", "")
+    if not passphrase:
+        return True  # no gate configured
+
+    gate_cookie = request.cookies.get("crow_gate", "")
+    if not gate_cookie:
+        return False
+
+    secret = auth_config.get("session_secret", "")
+    try:
+        payload = jwt.decode(gate_cookie, secret, algorithms=["HS256"])
+        return payload.get("gate") is True
+    except jwt.InvalidTokenError:
+        return False
+
+
+@router.get("/gate-status")
+async def gate_status(request: Request):
+    """Return instance gate configuration (public endpoint)."""
+    auth_config = request.app.state.auth_config
+    passphrase = auth_config.get("passphrase", "")
+    active = bool(passphrase)
+    passed = _check_gate_cookie(request) if active else False
+    return {
+        "instance_gate": active,
+        "instance_message": auth_config.get("instance_message", "") if active else "",
+        "gate_passed": passed,
+    }
+
+
+class PassphraseRequest(BaseModel):
+    passphrase: str
+
+
+@router.post("/verify-passphrase")
+async def verify_passphrase(req: PassphraseRequest, request: Request):
+    """Verify the instance passphrase and issue a gate cookie."""
+    auth_config = request.app.state.auth_config
+    passphrase = auth_config.get("passphrase", "")
+
+    if not passphrase:
+        raise HTTPException(status_code=404)
+
+    if not secrets.compare_digest(req.passphrase, passphrase):
+        raise HTTPException(status_code=403, detail="Incorrect passphrase")
+
+    secret = auth_config.get("session_secret", "")
+    payload = {
+        "gate": True,
+        "iat": datetime.now(UTC),
+        "exp": datetime.now(UTC) + timedelta(hours=GATE_COOKIE_LIFETIME_HOURS),
+    }
+    token = jwt.encode(payload, secret, algorithm="HS256")
+
+    response = JSONResponse({"status": "ok"})
+    response.set_cookie(
+        key="crow_gate",
+        value=token,
+        httponly=True,
+        samesite="lax",
+        max_age=GATE_COOKIE_LIFETIME_HOURS * 3600,
+        secure=request.url.scheme == "https",
+    )
+    return response
+
+
+# ---------------------------------------------------------------------------
+# Email OTP
+# ---------------------------------------------------------------------------
+
 CODE_EXPIRY_MINUTES = 10
 MAX_CODES_PER_WINDOW = 3
 RATE_LIMIT_MINUTES = 10
@@ -51,6 +133,9 @@ async def send_code(req: SendCodeRequest, request: Request):
     auth_config = request.app.state.auth_config
     if not auth_config.get("enabled", True):
         raise HTTPException(status_code=404)
+
+    if not _check_gate_cookie(request):
+        raise HTTPException(status_code=403, detail="Passphrase required")
 
     db = request.app.state.db
 
@@ -74,6 +159,9 @@ async def verify(req: VerifyRequest, request: Request):
     auth_config = request.app.state.auth_config
     if not auth_config.get("enabled", True):
         raise HTTPException(status_code=404)
+
+    if not _check_gate_cookie(request):
+        raise HTTPException(status_code=403, detail="Passphrase required")
 
     db = request.app.state.db
 
