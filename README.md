@@ -79,7 +79,7 @@ agents:
 
 Each agent gets:
 - A **system prompt** (Jinja2 template in `crow/agents/prompts/`)
-- **Built-in tools** — `delegate_to_agent`, `delegate_parallel`, `knowledge_search`, `knowledge_write`, `knowledge_archive`, `create_agent`, `list_agents`, `delete_agent`, `schedule`, `progress_update`
+- **Built-in tools** — `delegate_to_agent`, `delegate_parallel`, `knowledge_search`, `knowledge_write`, `knowledge_archive`, `create_agent`, `list_agents`, `delete_agent`, `schedule`, `progress_update`, `create_attachment`
 - **MCP tools** — dynamically discovered from connected MCP servers
 - **PARA knowledge** — persistent learnings in Postgres (Projects, Areas, Resources, Archives)
 
@@ -267,12 +267,31 @@ Custom dashboards are plain HTML/JS/CSS — no React or build step needed. They'
 | `GET /api/jobs` | List jobs |
 | `GET /scheduled-jobs` | List scheduled jobs |
 | `DELETE /scheduled-jobs/{id}` | Cancel a scheduled job |
+| `GET /attachments/{id}/download` | Download a file attachment |
 
 See [CLAUDE.md](CLAUDE.md) for the full integration guide: agent markdown format, crow.yml reference, dashboard contract, and MCP server pattern.
 
+## File attachments
+
+Messages support file attachments (PDFs, images, documents). Users can upload files when sending messages, and agents can create file attachments on their responses.
+
+- **User uploads** — send files via multipart `POST /messages` with a `files` field. Attachments are passed to Claude as native content blocks (images, PDFs).
+- **Agent attachments** — agents use the `create_attachment` built-in tool to attach files (cover letters, reports, CSVs) to their responses.
+- **Downloads** — `GET /attachments/{id}/download` retrieves any attachment.
+
+```markdown
+---
+name: report-writer
+description: "Generates reports and attaches them as files"
+tools: [knowledge_search, create_attachment]
+---
+
+You write reports and attach them as downloadable files.
+```
+
 ## Gateways
 
-- **HTTP API** — `POST /messages` for programmatic access
+- **HTTP API** — `POST /messages` for programmatic access (JSON or multipart with file uploads)
 - **SSE** — real-time streaming for web and mobile clients
 - **Web dashboard** — built-in UI for conversations and status
 

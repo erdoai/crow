@@ -791,6 +791,67 @@ class Database:
             name, user_id,
         )
 
+    # -- Attachments --
+
+    async def insert_attachment(
+        self,
+        message_id: str,
+        filename: str,
+        content_type: str,
+        size_bytes: int,
+        data: str,
+    ) -> str:
+        att_id = uuid4().hex
+        await self._pool.execute(
+            """INSERT INTO attachments (id, message_id, filename, content_type, size_bytes, data, created_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)""",
+            att_id, message_id, filename, content_type, size_bytes, data, datetime.now(UTC),
+        )
+        return att_id
+
+    async def insert_attachment_for_job(
+        self,
+        job_id: str,
+        filename: str,
+        content_type: str,
+        size_bytes: int,
+        data: str,
+    ) -> str:
+        att_id = uuid4().hex
+        await self._pool.execute(
+            """INSERT INTO attachments (id, job_id, filename, content_type, size_bytes, data, created_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)""",
+            att_id, job_id, filename, content_type, size_bytes, data, datetime.now(UTC),
+        )
+        return att_id
+
+    async def get_attachment(self, attachment_id: str) -> dict | None:
+        row = await self._pool.fetchrow(
+            "SELECT * FROM attachments WHERE id = $1", attachment_id
+        )
+        return dict(row) if row else None
+
+    async def get_attachments_for_messages(self, message_ids: list[str]) -> dict[str, list[dict]]:
+        """Batch fetch attachments for multiple messages. Returns {message_id: [attachments]}."""
+        if not message_ids:
+            return {}
+        rows = await self._pool.fetch(
+            "SELECT * FROM attachments WHERE message_id = ANY($1)",
+            message_ids,
+        )
+        result: dict[str, list[dict]] = {}
+        for row in rows:
+            r = dict(row)
+            mid = r["message_id"]
+            result.setdefault(mid, []).append(r)
+        return result
+
+    async def link_job_attachments_to_message(self, job_id: str, message_id: str) -> None:
+        await self._pool.execute(
+            "UPDATE attachments SET message_id = $1, job_id = NULL WHERE job_id = $2",
+            message_id, job_id,
+        )
+
     # -- Scheduled Jobs --
 
     async def cancel_active_schedules(

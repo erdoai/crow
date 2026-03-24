@@ -214,6 +214,31 @@ BUILTIN_TOOLS = {
             "required": ["status"],
         },
     },
+    "create_attachment": {
+        "name": "create_attachment",
+        "description": (
+            "Create a file attachment on your response. Use to send documents "
+            "like cover letters, reports, or data files to the user."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "filename": {
+                    "type": "string",
+                    "description": "Filename with extension (e.g. 'cover_letter.md', 'report.csv')",
+                },
+                "content": {
+                    "type": "string",
+                    "description": "The text content of the file",
+                },
+                "content_type": {
+                    "type": "string",
+                    "description": "MIME type (default: text/plain)",
+                },
+            },
+            "required": ["filename", "content"],
+        },
+    },
     "delegate_parallel": {
         "name": "delegate_parallel",
         "description": (
@@ -439,6 +464,33 @@ async def execute_builtin(
                 kind = f"in {payload.get('delay_seconds')}s"
             return f"Scheduled {tool_input['agent_name']} ({kind}), id={data['id']}"
 
+    elif tool_name == "create_attachment":
+        import base64
+
+        content = tool_input["content"]
+        content_b64 = base64.b64encode(content.encode("utf-8")).decode("ascii")
+        ct = tool_input.get("content_type", "text/plain")
+        filename = tool_input["filename"]
+        size_bytes = len(content.encode("utf-8"))
+        job_id = job.get("id", "unknown")
+
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{server_url}/jobs/{job_id}/attachments",
+                headers=headers,
+                json={
+                    "filename": filename,
+                    "content_type": ct,
+                    "data": content_b64,
+                    "size_bytes": size_bytes,
+                },
+                timeout=30,
+            )
+            if resp.status_code >= 400:
+                return f"Failed to create attachment: {resp.text}"
+            att_data = resp.json()
+            return f"Created attachment: {filename} (id={att_data['id']})"
+
     elif tool_name == "progress_update":
         job_id = job.get("id", "unknown")
         async with httpx.AsyncClient() as client:
@@ -493,13 +545,42 @@ async def run_agent(
         )
         system_prompt += knowledge_section
 
-    # Build messages
+    # Build messages (with attachment content blocks)
     api_messages = []
     for msg in conversation_messages:
-        api_messages.append({
-            "role": msg["role"],
-            "content": msg["content"],
-        })
+        attachments = msg.get("attachments") or []
+        if attachments:
+            content_blocks = []
+            if msg["content"]:
+                content_blocks.append({"type": "text", "text": msg["content"]})
+            for att in attachments:
+                ct = att["content_type"]
+                if ct.startswith("image/"):
+                    content_blocks.append({
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": ct,
+                            "data": att["data"],
+                        },
+                    })
+                elif ct == "application/pdf":
+                    content_blocks.append({
+                        "type": "document",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "application/pdf",
+                            "data": att["data"],
+                        },
+                    })
+                else:
+                    content_blocks.append({
+                        "type": "text",
+                        "text": f"[Attached file: {att['filename']} ({ct}, {att['size_bytes']} bytes)]",
+                    })
+            api_messages.append({"role": msg["role"], "content": content_blocks})
+        else:
+            api_messages.append({"role": msg["role"], "content": msg["content"]})
     if not conversation_messages:
         api_messages.append({"role": "user", "content": job["input"]})
 

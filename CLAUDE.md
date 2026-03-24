@@ -135,7 +135,7 @@ mcp_servers:
 | `knowledge_areas` | no | Scopes for PARA knowledge reads/writes |
 | `max_iterations` | no | Max tool-use loops for this agent (defaults to server default) |
 
-**Available built-in tools:** `delegate_to_agent`, `delegate_parallel`, `knowledge_search`, `knowledge_write`, `knowledge_archive`, `create_agent`, `list_agents`, `delete_agent`, `schedule`, `progress_update`
+**Available built-in tools:** `delegate_to_agent`, `delegate_parallel`, `knowledge_search`, `knowledge_write`, `knowledge_archive`, `create_agent`, `list_agents`, `delete_agent`, `schedule`, `progress_update`, `create_attachment`
 
 ### Sub-agents and orchestration
 
@@ -212,6 +212,22 @@ The agent provides `agent_name` + `input` + either `delay_seconds` (one-shot) or
 
 **`progress_update`** — publishes a real-time status update during an agent run. Writes to the state channel under key `progress:{job_id}`, so dashboards can subscribe via SSE (`/api/state/stream?keys=progress:*`).
 
+### File attachments
+
+Messages support file attachments. Users upload files via multipart `POST /messages`, and agents create attachments via the `create_attachment` built-in tool.
+
+**User uploads:** Send a multipart/form-data request with `text`, `thread_id`, and `files` fields. Files are stored as base64 in the `attachments` table and passed to Claude as native content blocks (images as `image` blocks, PDFs as `document` blocks).
+
+**Agent attachments:** The `create_attachment` tool takes `filename`, `content` (text), and optional `content_type` (default `text/plain`). The attachment is linked to the agent's response message and downloadable via `GET /attachments/{id}/download`.
+
+**Conversation messages API** (`GET /conversations/{id}/messages`) returns attachment metadata (id, filename, content_type, size_bytes) on each message — data is omitted (clients download separately).
+
+**Attachments API:**
+```
+GET  /attachments/{id}/download        # download attachment file
+POST /jobs/{job_id}/attachments        # worker-facing: create attachment during execution
+```
+
 **Scheduled jobs API:**
 ```
 GET    /scheduled-jobs          # list scheduled jobs (user-scoped)
@@ -237,7 +253,7 @@ GET  /api/state/{key}                  # read current value
 
 **Agents and messages:**
 ```
-POST /api/messages                     # trigger an agent: {"agent": "name", "content": "..."}
+POST /api/messages                     # trigger an agent (JSON or multipart with files)
 GET  /api/agents                       # list top-level agents (add ?parent=X or ?all=true)
 GET  /api/jobs                         # list jobs
 GET  /api/conversations/{id}/messages  # conversation history

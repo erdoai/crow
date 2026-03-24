@@ -72,10 +72,15 @@ async def claim_next_job(request: Request, x_worker_key: str = Header()):
             job_user_id = conv.get("user_id")
     agent_def = await db.get_agent_def(job["agent_name"], user_id=job_user_id)
 
-    # Load conversation history
+    # Load conversation history with attachments
     messages = []
     if job["conversation_id"]:
         messages = await db.get_messages(job["conversation_id"])
+        if messages:
+            msg_ids = [m["id"] for m in messages]
+            attachments_by_msg = await db.get_attachments_for_messages(msg_ids)
+            for msg in messages:
+                msg["attachments"] = attachments_by_msg.get(msg["id"], [])
 
     # Load relevant knowledge
     knowledge = []
@@ -211,12 +216,14 @@ async def report_result(
     # If there's a conversation, save the response and notify gateways
     job = await db.get_job(job_id)
     if job and job["conversation_id"]:
-        await db.insert_message(
+        msg_id = await db.insert_message(
             conversation_id=job["conversation_id"],
             role="assistant",
             content=result.output,
             agent_name=job["agent_name"],
         )
+        # Link any attachments the agent created during execution
+        await db.link_job_attachments_to_message(job_id, msg_id)
 
         conv = await db.get_conversation(job["conversation_id"])
         if conv:
@@ -235,6 +242,33 @@ async def report_result(
             )
 
     return {"status": "ok"}
+
+
+class AttachmentPayload(BaseModel):
+    filename: str
+    content_type: str
+    data: str  # base64
+    size_bytes: int
+
+
+@router.post("/{job_id}/attachments")
+async def create_job_attachment(
+    job_id: str,
+    payload: AttachmentPayload,
+    request: Request,
+    x_worker_key: str = Header(),
+):
+    """Worker creates a file attachment during agent execution."""
+    _check_worker_key(request, x_worker_key)
+    db = request.app.state.db
+    att_id = await db.insert_attachment_for_job(
+        job_id=job_id,
+        filename=payload.filename,
+        content_type=payload.content_type,
+        size_bytes=payload.size_bytes,
+        data=payload.data,
+    )
+    return {"id": att_id, "filename": payload.filename}
 
 
 class JobError(BaseModel):

@@ -38,4 +38,17 @@ async def get_messages(conversation_id: str, request: Request):
     user = await get_current_user(request)
     await _verify_conversation_access(request, conversation_id, user)
     db = request.app.state.db
-    return await db.get_messages(conversation_id)
+    messages = await db.get_messages(conversation_id)
+
+    # Attach file metadata (without data column) to each message
+    if messages:
+        msg_ids = [m["id"] for m in messages]
+        attachments_by_msg = await db.get_attachments_for_messages(msg_ids)
+        for msg in messages:
+            atts = attachments_by_msg.get(msg["id"], [])
+            # Strip the data field for the API response (clients download separately)
+            msg["attachments"] = [
+                {k: v for k, v in a.items() if k != "data"} for a in atts
+            ]
+
+    return messages

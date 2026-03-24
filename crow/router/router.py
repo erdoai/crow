@@ -30,11 +30,21 @@ class Router:
         )
 
         # Save inbound message
-        await self.db.insert_message(
+        msg_id = await self.db.insert_message(
             conversation_id=conversation["id"],
             role="user",
             content=text,
         )
+
+        # Save any file attachments
+        for att in event.data.get("attachments") or []:
+            await self.db.insert_attachment(
+                message_id=msg_id,
+                filename=att["filename"],
+                content_type=att["content_type"],
+                size_bytes=att["size_bytes"],
+                data=att["data"],
+            )
 
         # Route to specific agent if requested, otherwise PA decides
         agent_name = event.data.get("agent", "pa")

@@ -25,6 +25,7 @@ from crow.gateways.api.gateway import APIGateway
 from crow.router.router import Router
 from crow.server.routes import (
     agents,
+    attachments,
     auth,
     config,
     conversations,
@@ -115,6 +116,7 @@ def create_app() -> FastAPI:
     app.include_router(config.router)
     app.include_router(state.router)
     app.include_router(scheduled_jobs.router)
+    app.include_router(attachments.router)
 
     # Auth + dashboard JSON APIs
     app.include_router(auth.api_router)  # /api/me
