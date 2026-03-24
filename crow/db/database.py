@@ -793,6 +793,29 @@ class Database:
 
     # -- Scheduled Jobs --
 
+    async def cancel_active_schedules(
+        self,
+        agent_name: str,
+        conversation_id: str | None = None,
+    ) -> int:
+        """Cancel all active schedules for an agent+conversation pair."""
+        if conversation_id:
+            result = await self._pool.execute(
+                """UPDATE scheduled_jobs SET status = 'completed'
+                   WHERE agent_name = $1 AND conversation_id = $2
+                     AND status = 'active'""",
+                agent_name,
+                conversation_id,
+            )
+        else:
+            result = await self._pool.execute(
+                """UPDATE scheduled_jobs SET status = 'completed'
+                   WHERE agent_name = $1 AND conversation_id IS NULL
+                     AND status = 'active'""",
+                agent_name,
+            )
+        return int(result.split()[-1])
+
     async def create_scheduled_job(
         self,
         scheduled_id: str,

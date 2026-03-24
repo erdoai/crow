@@ -180,7 +180,16 @@ BUILTIN_TOOLS = {
                     "type": "string",
                     "description": (
                         "Cron expression for recurring schedule"
-                        " (e.g. '*/5 * * * *'). Mutually exclusive with delay_seconds."
+                        " (e.g. '*/5 * * * *'). Mutually exclusive"
+                        " with delay_seconds."
+                    ),
+                },
+                "replace": {
+                    "type": "boolean",
+                    "description": (
+                        "Cancel existing active schedules for this"
+                        " agent before creating a new one. Use for"
+                        " heartbeats to prevent duplicate schedules."
                     ),
                 },
             },
@@ -405,6 +414,7 @@ async def execute_builtin(
             "conversation_id": job.get("conversation_id"),
             "user_id": job.get("user_id"),
             "created_by_job_id": job.get("id"),
+            "replace": tool_input.get("replace", False),
         }
         if tool_input.get("cron"):
             payload["cron"] = tool_input["cron"]

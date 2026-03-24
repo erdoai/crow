@@ -202,7 +202,7 @@ Secrets use `${VAR}` syntax, resolved from environment at runtime. In production
 
 ### Scheduling and progress
 
-**`schedule`** — lets an agent schedule a future job (one-shot or recurring). Use for heartbeats (agent schedules itself), delayed follow-ups, or periodic tasks.
+**`schedule`** — lets an agent schedule a future job (one-shot or recurring). Use for heartbeats (agent schedules itself), delayed follow-ups, or periodic tasks. Set `replace: true` to cancel existing active schedules for the same agent+conversation before creating a new one — this prevents duplicate heartbeats.
 
 ```markdown
 tools: [schedule, progress_update]

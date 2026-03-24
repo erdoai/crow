@@ -155,7 +155,7 @@ You are a monitoring agent. Check system health and schedule yourself
 to run again in 5 minutes.
 ```
 
-- **`schedule`** — create a one-shot (`delay_seconds`) or recurring (`cron`) future job. Use for heartbeats (agent schedules itself), delayed follow-ups, or periodic tasks.
+- **`schedule`** — create a one-shot (`delay_seconds`) or recurring (`cron`) future job. Use for heartbeats (agent schedules itself), delayed follow-ups, or periodic tasks. Set `replace: true` to cancel existing schedules first (prevents duplicate heartbeats).
 - **`progress_update`** — publish a status message mid-run, visible to dashboards in real-time via SSE.
 
 Scheduled jobs are managed via `GET /scheduled-jobs` (list) and `DELETE /scheduled-jobs/{id}` (cancel). A server-side scheduler loop promotes due jobs to the worker queue automatically.

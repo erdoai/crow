@@ -20,6 +20,7 @@ class SchedulePayload(BaseModel):
     conversation_id: str | None = None
     user_id: str | None = None
     created_by_job_id: str | None = None
+    replace: bool = False
 
 
 @router.post("")
@@ -43,6 +44,12 @@ async def create_scheduled_job(
         run_at = croniter(payload.cron, datetime.now(UTC)).get_next(datetime)
     else:
         run_at = datetime.now(UTC) + timedelta(seconds=payload.delay_seconds)
+
+    # Cancel existing active schedules for this agent (heartbeat dedup)
+    if payload.replace:
+        await db.cancel_active_schedules(
+            payload.agent_name, payload.conversation_id
+        )
 
     from uuid import uuid4
 
