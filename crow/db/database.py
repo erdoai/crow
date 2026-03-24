@@ -791,3 +791,105 @@ class Database:
             name, user_id,
         )
 
+    # -- Scheduled Jobs --
+
+    async def create_scheduled_job(
+        self,
+        scheduled_id: str,
+        agent_name: str,
+        input_text: str,
+        run_at: datetime,
+        cron: str | None = None,
+        conversation_id: str | None = None,
+        user_id: str | None = None,
+        created_by_job_id: str | None = None,
+    ) -> dict:
+        await self._pool.execute(
+            """INSERT INTO scheduled_jobs
+               (id, agent_name, input, conversation_id, user_id, cron, run_at,
+                status, created_by_job_id, created_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8, $9)""",
+            scheduled_id,
+            agent_name,
+            input_text,
+            conversation_id,
+            user_id,
+            cron,
+            run_at,
+            created_by_job_id,
+            datetime.now(UTC),
+        )
+        return {
+            "id": scheduled_id,
+            "agent_name": agent_name,
+            "input": input_text,
+            "cron": cron,
+            "run_at": run_at.isoformat(),
+            "status": "active",
+        }
+
+    async def get_due_scheduled_jobs(self, limit: int = 50) -> list[dict]:
+        """Atomically fetch and lock due scheduled jobs."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                """SELECT * FROM scheduled_jobs
+                   WHERE status = 'active' AND run_at <= $1
+                   ORDER BY run_at ASC
+                   LIMIT $2
+                   FOR UPDATE SKIP LOCKED""",
+                datetime.now(UTC),
+                limit,
+            )
+            return [dict(r) for r in rows]
+
+    async def advance_scheduled_job(
+        self, scheduled_id: str, next_run_at: datetime | None
+    ) -> None:
+        if next_run_at:
+            await self._pool.execute(
+                "UPDATE scheduled_jobs SET run_at = $1 WHERE id = $2",
+                next_run_at,
+                scheduled_id,
+            )
+        else:
+            await self._pool.execute(
+                "UPDATE scheduled_jobs SET status = 'completed' WHERE id = $1",
+                scheduled_id,
+            )
+
+    async def list_scheduled_jobs(
+        self, user_id: str | None = None, limit: int = 50
+    ) -> list[dict]:
+        if user_id:
+            rows = await self._pool.fetch(
+                """SELECT * FROM scheduled_jobs
+                   WHERE user_id = $1 OR user_id IS NULL
+                   ORDER BY created_at DESC LIMIT $2""",
+                user_id,
+                limit,
+            )
+        else:
+            rows = await self._pool.fetch(
+                "SELECT * FROM scheduled_jobs ORDER BY created_at DESC LIMIT $1",
+                limit,
+            )
+        return [dict(r) for r in rows]
+
+    async def cancel_scheduled_job(
+        self, scheduled_id: str, user_id: str | None = None
+    ) -> bool:
+        if user_id:
+            result = await self._pool.execute(
+                """UPDATE scheduled_jobs SET status = 'completed'
+                   WHERE id = $1 AND user_id = $2 AND status = 'active'""",
+                scheduled_id,
+                user_id,
+            )
+        else:
+            result = await self._pool.execute(
+                """UPDATE scheduled_jobs SET status = 'completed'
+                   WHERE id = $1 AND status = 'active'""",
+                scheduled_id,
+            )
+        return result.split()[-1] != "0"
+

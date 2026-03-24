@@ -155,6 +155,56 @@ BUILTIN_TOOLS = {
             "required": ["name"],
         },
     },
+    "schedule": {
+        "name": "schedule",
+        "description": (
+            "Schedule a future job. Use for heartbeats (schedule yourself to"
+            " run again later) or delayed tasks for any agent."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "agent_name": {
+                    "type": "string",
+                    "description": "Agent to run (use your own name for heartbeat)",
+                },
+                "input": {
+                    "type": "string",
+                    "description": "Message/task for the scheduled run",
+                },
+                "delay_seconds": {
+                    "type": "integer",
+                    "description": "Seconds from now to run (one-shot)",
+                },
+                "cron": {
+                    "type": "string",
+                    "description": (
+                        "Cron expression for recurring schedule"
+                        " (e.g. '*/5 * * * *'). Mutually exclusive with delay_seconds."
+                    ),
+                },
+            },
+            "required": ["agent_name", "input"],
+        },
+    },
+    "progress_update": {
+        "name": "progress_update",
+        "description": "Publish a progress update visible to dashboards in real-time via SSE.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "description": "Human-readable status message",
+                },
+                "data": {
+                    "type": "object",
+                    "description": "Optional structured data (progress %, metrics, etc.)",
+                },
+            },
+            "required": ["status"],
+        },
+    },
     "delegate_parallel": {
         "name": "delegate_parallel",
         "description": (
@@ -347,6 +397,52 @@ async def execute_builtin(
                 timeout=10,
             )
             return resp.text
+
+    elif tool_name == "schedule":
+        payload = {
+            "agent_name": tool_input["agent_name"],
+            "input": tool_input["input"],
+            "conversation_id": job.get("conversation_id"),
+            "user_id": job.get("user_id"),
+            "created_by_job_id": job.get("id"),
+        }
+        if tool_input.get("cron"):
+            payload["cron"] = tool_input["cron"]
+        elif tool_input.get("delay_seconds"):
+            payload["delay_seconds"] = tool_input["delay_seconds"]
+        else:
+            payload["delay_seconds"] = 60  # default 1 minute
+
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{server_url}/scheduled-jobs",
+                headers=headers,
+                json=payload,
+                timeout=10,
+            )
+            if resp.status_code >= 400:
+                return f"Schedule failed: {resp.text}"
+            data = resp.json()
+            if tool_input.get("cron"):
+                kind = f"cron={tool_input['cron']}"
+            else:
+                kind = f"in {payload.get('delay_seconds')}s"
+            return f"Scheduled {tool_input['agent_name']} ({kind}), id={data['id']}"
+
+    elif tool_name == "progress_update":
+        job_id = job.get("id", "unknown")
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{server_url}/jobs/{job_id}/progress",
+                headers=headers,
+                json={
+                    "status": tool_input["status"],
+                    "data": tool_input.get("data"),
+                    "agent_name": job.get("agent_name"),
+                },
+                timeout=10,
+            )
+            return f"Progress published: {tool_input['status']}"
 
     return json.dumps({"error": f"Unknown built-in: {tool_name}"})
 

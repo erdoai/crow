@@ -50,6 +50,7 @@ WORKER_KEY_PATHS: set[str] = set()
 # POST to these paths is allowed through if x-worker-key header is present.
 WORKER_KEY_POST_PREFIXES: tuple[str, ...] = (
     "/agents/",
+    "/scheduled-jobs/",
 )
 
 

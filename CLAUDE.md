@@ -135,7 +135,7 @@ mcp_servers:
 | `knowledge_areas` | no | Scopes for PARA knowledge reads/writes |
 | `max_iterations` | no | Max tool-use loops for this agent (defaults to server default) |
 
-**Available built-in tools:** `delegate_to_agent`, `delegate_parallel`, `knowledge_search`, `knowledge_write`, `knowledge_archive`, `create_agent`, `list_agents`, `delete_agent`
+**Available built-in tools:** `delegate_to_agent`, `delegate_parallel`, `knowledge_search`, `knowledge_write`, `knowledge_archive`, `create_agent`, `list_agents`, `delete_agent`, `schedule`, `progress_update`
 
 ### Sub-agents and orchestration
 
@@ -199,6 +199,24 @@ auth:
 ```
 
 Secrets use `${VAR}` syntax, resolved from environment at runtime. In production, the entire file can be delivered via the `CROW_CONFIG` env var.
+
+### Scheduling and progress
+
+**`schedule`** — lets an agent schedule a future job (one-shot or recurring). Use for heartbeats (agent schedules itself), delayed follow-ups, or periodic tasks.
+
+```markdown
+tools: [schedule, progress_update]
+```
+
+The agent provides `agent_name` + `input` + either `delay_seconds` (one-shot) or `cron` (recurring, e.g. `*/5 * * * *`). Scheduled jobs are stored in the `scheduled_jobs` table and promoted to pending jobs by a server-side scheduler loop (10s poll interval).
+
+**`progress_update`** — publishes a real-time status update during an agent run. Writes to the state channel under key `progress:{job_id}`, so dashboards can subscribe via SSE (`/api/state/stream?keys=progress:*`).
+
+**Scheduled jobs API:**
+```
+GET    /scheduled-jobs          # list scheduled jobs (user-scoped)
+DELETE /scheduled-jobs/{id}     # cancel a scheduled job
+```
 
 ### Custom dashboard API contract
 

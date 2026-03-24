@@ -1,5 +1,6 @@
 """FastAPI application with lifespan."""
 
+import asyncio
 import base64
 import logging
 import mimetypes
@@ -31,6 +32,7 @@ from crow.server.routes import (
     health,
     jobs,
     messages,
+    scheduled_jobs,
     state,
     stream,
     workers,
@@ -75,10 +77,16 @@ async def lifespan(app: FastAPI):
     gateways.append(api_gw)
     app.state.api_gateway = api_gw
 
+    # Scheduler background task
+    from crow.server.scheduler import scheduler_loop
+
+    scheduler_task = asyncio.create_task(scheduler_loop(db, bus))
+
     logger.info("crow server started on %s:%d", settings.host, settings.port)
 
     yield
 
+    scheduler_task.cancel()
     for gw in gateways:
         await gw.stop()
     await db.close()
@@ -106,6 +114,7 @@ def create_app() -> FastAPI:
     app.include_router(workers.router)
     app.include_router(config.router)
     app.include_router(state.router)
+    app.include_router(scheduled_jobs.router)
 
     # Auth + dashboard JSON APIs
     app.include_router(auth.api_router)  # /api/me

@@ -79,7 +79,7 @@ agents:
 
 Each agent gets:
 - A **system prompt** (Jinja2 template in `crow/agents/prompts/`)
-- **Built-in tools** — `delegate_to_agent`, `delegate_parallel`, `knowledge_search`, `knowledge_write`, `knowledge_archive`, `create_agent`, `list_agents`, `delete_agent`
+- **Built-in tools** — `delegate_to_agent`, `delegate_parallel`, `knowledge_search`, `knowledge_write`, `knowledge_archive`, `create_agent`, `list_agents`, `delete_agent`, `schedule`, `progress_update`
 - **MCP tools** — dynamically discovered from connected MCP servers
 - **PARA knowledge** — persistent learnings in Postgres (Projects, Areas, Resources, Archives)
 
@@ -139,6 +139,26 @@ mcp_servers:
     headers:
       Authorization: "Bearer ${MY_KEY}"
 ```
+
+## Scheduling and progress
+
+Agents can schedule future jobs and publish real-time progress updates:
+
+```markdown
+---
+name: monitor
+description: "Monitors system health on a schedule"
+tools: [schedule, progress_update]
+---
+
+You are a monitoring agent. Check system health and schedule yourself
+to run again in 5 minutes.
+```
+
+- **`schedule`** — create a one-shot (`delay_seconds`) or recurring (`cron`) future job. Use for heartbeats (agent schedules itself), delayed follow-ups, or periodic tasks.
+- **`progress_update`** — publish a status message mid-run, visible to dashboards in real-time via SSE.
+
+Scheduled jobs are managed via `GET /scheduled-jobs` (list) and `DELETE /scheduled-jobs/{id}` (cancel). A server-side scheduler loop promotes due jobs to the worker queue automatically.
 
 ## MCP integration
 
@@ -245,6 +265,8 @@ Custom dashboards are plain HTML/JS/CSS — no React or build step needed. They'
 | `POST /api/messages` | Trigger an agent |
 | `GET /api/agents` | List top-level agents (`?parent=X` for sub-agents, `?all=true` for all) |
 | `GET /api/jobs` | List jobs |
+| `GET /scheduled-jobs` | List scheduled jobs |
+| `DELETE /scheduled-jobs/{id}` | Cancel a scheduled job |
 
 See [CLAUDE.md](CLAUDE.md) for the full integration guide: agent markdown format, crow.yml reference, dashboard contract, and MCP server pattern.
 

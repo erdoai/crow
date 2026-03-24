@@ -4,7 +4,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel
 
 from crow.auth.dependencies import get_current_user
-from crow.events.types import MESSAGE_RESPONSE, Event
+from crow.events.types import JOB_PROGRESS, MESSAGE_RESPONSE, STATE_UPDATED, Event
 
 router = APIRouter(prefix="/jobs")
 
@@ -127,7 +127,7 @@ async def claim_next_job(request: Request, x_worker_key: str = Header()):
         ]
 
     return {
-        "job": job,
+        "job": {**job, "user_id": job_user_id},
         "agent": {
             "name": agent_def["name"],
             "description": agent_def["description"],
@@ -144,6 +144,51 @@ async def claim_next_job(request: Request, x_worker_key: str = Header()):
         "knowledge": knowledge,
         "mcp_servers": mcp_servers,
     }
+
+
+class ProgressPayload(BaseModel):
+    status: str
+    data: dict | None = None
+    agent_name: str | None = None
+
+
+@router.post("/{job_id}/progress")
+async def job_progress(
+    job_id: str,
+    payload: ProgressPayload,
+    request: Request,
+    x_worker_key: str = Header(),
+):
+    """Worker reports mid-run progress — written to state channel for dashboards."""
+    _check_worker_key(request, x_worker_key)
+    db = request.app.state.db
+    bus = request.app.state.bus
+
+    # Resolve user_id from job's conversation
+    user_id = None
+    job = await db.get_job(job_id)
+    if job and job.get("conversation_id"):
+        conv = await db.get_conversation(job["conversation_id"])
+        if conv:
+            user_id = conv.get("user_id")
+
+    state_key = f"progress:{job_id}"
+    state_data = {
+        "agent_name": payload.agent_name or (job["agent_name"] if job else "unknown"),
+        "job_id": job_id,
+        "status": payload.status,
+        **(payload.data or {}),
+    }
+    await db.set_state(state_key, state_data, user_id=user_id)
+    await bus.publish(Event(
+        type=STATE_UPDATED,
+        data={"key": state_key, "data": state_data, "user_id": user_id},
+    ))
+    await bus.publish(Event(
+        type=JOB_PROGRESS,
+        data={"job_id": job_id, "status": payload.status, "data": payload.data},
+    ))
+    return {"status": "ok"}
 
 
 class JobResult(BaseModel):
