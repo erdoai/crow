@@ -102,13 +102,25 @@ Agents are markdown files with YAML frontmatter. The frontmatter defines metadat
 ---
 name: agent-name
 description: "What this agent does"
+parent: null                    # omit for top-level (user-facing) agents
 tools: [knowledge_search, knowledge_write]
-mcp_servers: [my-tools]
+mcp_servers: [my-tools]        # list of names, or dict of inline configs (see below)
 knowledge_areas: [my-area]
+max_iterations: 25
 ---
 
 Your system prompt here. This is sent as the system message when the agent runs.
 You can use multiple paragraphs, lists, code blocks — any markdown.
+```
+
+**Inline MCP servers** — instead of referencing instance-level names, define configs directly in frontmatter. Inline configs override instance-level servers of the same name:
+
+```yaml
+mcp_servers:
+  my-tools:
+    url: https://my-mcp.example.com/mcp
+    headers:
+      Authorization: "Bearer ${MY_KEY}"
 ```
 
 **Frontmatter fields:**
@@ -117,11 +129,36 @@ You can use multiple paragraphs, lists, code blocks — any markdown.
 |-------|----------|-------------|
 | `name` | yes | Unique identifier (kebab-case) |
 | `description` | yes | Short description shown in dashboard and used by PA for routing |
+| `parent` | no | Name of parent agent. Sub-agents are hidden from the UI and only invoked via delegation. Omit for top-level (user-facing) agents |
 | `tools` | no | List of built-in tools to enable |
-| `mcp_servers` | no | List of MCP server names (must match names in `crow.yml` or registered via CLI) |
+| `mcp_servers` | no | List of MCP server names (instance-level refs) **or** dict of inline MCP configs. Inline configs override instance-level servers of the same name |
 | `knowledge_areas` | no | Scopes for PARA knowledge reads/writes |
+| `max_iterations` | no | Max tool-use loops for this agent (defaults to server default) |
 
-**Available built-in tools:** `delegate_to_agent`, `knowledge_search`, `knowledge_write`, `knowledge_archive`, `create_agent`, `list_agents`, `delete_agent`
+**Available built-in tools:** `delegate_to_agent`, `delegate_parallel`, `knowledge_search`, `knowledge_write`, `knowledge_archive`, `create_agent`, `list_agents`, `delete_agent`
+
+### Sub-agents and orchestration
+
+Agents with a `parent` field are **sub-agents** — hidden from the UI and only invoked via delegation from their parent. Agents without `parent` are top-level (user-facing).
+
+**`delegate_parallel`** is a built-in tool for running multiple sub-agents concurrently. Use it alongside `delegate_to_agent` (sequential) in orchestrator agents.
+
+Parent agents automatically receive a `{{ sub_agents }}` Jinja2 variable in their prompt context, listing their children's names and descriptions. Use it to tell the orchestrator what's available:
+
+```markdown
+---
+name: trading
+tools: [delegate_to_agent, delegate_parallel]
+max_iterations: 25
+---
+
+You orchestrate analysis across these specialists:
+{% for agent in sub_agents %}
+- {{ agent.name }}: {{ agent.description }}
+{% endfor %}
+```
+
+**API behavior:** `GET /api/agents` returns top-level agents by default. Use `?parent=<name>` to list a specific agent's sub-agents, or `?all=true` to list everything.
 
 ### crow.yml reference
 
@@ -181,7 +218,7 @@ GET  /api/state/{key}                  # read current value
 **Agents and messages:**
 ```
 POST /api/messages                     # trigger an agent: {"agent": "name", "content": "..."}
-GET  /api/agents                       # list agents
+GET  /api/agents                       # list top-level agents (add ?parent=X or ?all=true)
 GET  /api/jobs                         # list jobs
 GET  /api/conversations/{id}/messages  # conversation history
 ```

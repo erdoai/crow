@@ -79,7 +79,7 @@ agents:
 
 Each agent gets:
 - A **system prompt** (Jinja2 template in `crow/agents/prompts/`)
-- **Built-in tools** — `delegate_to_agent`, `knowledge_search`, `knowledge_write`, `knowledge_archive`, `create_agent`, `list_agents`, `delete_agent`
+- **Built-in tools** — `delegate_to_agent`, `delegate_parallel`, `knowledge_search`, `knowledge_write`, `knowledge_archive`, `create_agent`, `list_agents`, `delete_agent`
 - **MCP tools** — dynamically discovered from connected MCP servers
 - **PARA knowledge** — persistent learnings in Postgres (Projects, Areas, Resources, Archives)
 
@@ -94,6 +94,7 @@ description: "Researches topics and saves findings"
 tools: [knowledge_search, knowledge_write]
 mcp_servers: [web-search]
 knowledge_areas: [research]
+max_iterations: 25
 ---
 
 You are a research agent. When given a topic, search the web for relevant
@@ -105,6 +106,38 @@ Keep agents in a local folder and sync:
 ```bash
 crow agents sync ./agents       # push local .md files to the server
 crow agents export ./agents     # pull all agents as .md files
+```
+
+### Sub-agents and orchestration
+
+Agents with a `parent` field are **sub-agents** — hidden from the UI and only invoked via delegation from their parent. Agents without `parent` are top-level (user-facing).
+
+Use `delegate_to_agent` for sequential delegation and `delegate_parallel` for concurrent sub-agent execution. Parent agents automatically receive a `{{ sub_agents }}` template variable with their children's names and descriptions:
+
+```markdown
+---
+name: trading
+description: "Orchestrates trading analysis"
+tools: [delegate_to_agent, delegate_parallel]
+max_iterations: 25
+---
+
+You orchestrate analysis across these specialists:
+{% for agent in sub_agents %}
+- {{ agent.name }}: {{ agent.description }}
+{% endfor %}
+```
+
+Sub-agents set `parent: trading` in their frontmatter to register under this orchestrator.
+
+**Per-agent MCP servers** can be defined inline in frontmatter (overrides instance-level configs of the same name):
+
+```yaml
+mcp_servers:
+  my-tools:
+    url: https://my-mcp.example.com/mcp
+    headers:
+      Authorization: "Bearer ${MY_KEY}"
 ```
 
 ## MCP integration
@@ -210,7 +243,7 @@ Custom dashboards are plain HTML/JS/CSS — no React or build step needed. They'
 | `GET /api/state/stream` | SSE stream — real-time state changes + agent events |
 | `POST/GET /api/state/{key}` | Read/write key/value state |
 | `POST /api/messages` | Trigger an agent |
-| `GET /api/agents` | List agents |
+| `GET /api/agents` | List top-level agents (`?parent=X` for sub-agents, `?all=true` for all) |
 | `GET /api/jobs` | List jobs |
 
 See [CLAUDE.md](CLAUDE.md) for the full integration guide: agent markdown format, crow.yml reference, dashboard contract, and MCP server pattern.
