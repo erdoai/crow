@@ -64,8 +64,13 @@ async def claim_next_job(request: Request, x_worker_key: str = Header()):
     if not job:
         return None
 
-    # Load agent definition from DB
-    agent_def = await db.get_agent_def(job["agent_name"])
+    # Load agent definition from DB (scoped to the user who created the conversation)
+    job_user_id = None
+    if job.get("conversation_id"):
+        conv = await db.get_conversation(job["conversation_id"])
+        if conv:
+            job_user_id = conv.get("user_id")
+    agent_def = await db.get_agent_def(job["agent_name"], user_id=job_user_id)
 
     # Load conversation history
     messages = []

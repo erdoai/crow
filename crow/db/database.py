@@ -385,41 +385,63 @@ class Database:
         tools: list[str] | None = None,
         mcp_servers: list[str] | None = None,
         knowledge_areas: list[str] | None = None,
+        user_id: str | None = None,
     ) -> None:
+        now = datetime.now(UTC)
+        # Delete existing then insert (handles NULL user_id correctly)
+        if user_id:
+            await self._pool.execute(
+                "DELETE FROM agent_defs WHERE name = $1 AND user_id = $2", name, user_id
+            )
+        else:
+            await self._pool.execute(
+                "DELETE FROM agent_defs WHERE name = $1 AND user_id IS NULL", name
+            )
         await self._pool.execute(
             """INSERT INTO agent_defs
                (name, description, prompt_template, tools,
-                mcp_servers, knowledge_areas, updated_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7)
-               ON CONFLICT (name) DO UPDATE SET
-                 description = $2, prompt_template = $3,
-                 tools = $4, mcp_servers = $5,
-                 knowledge_areas = $6, updated_at = $7""",
-            name,
-            description,
-            prompt_template,
-            tools or [],
-            mcp_servers or [],
-            knowledge_areas or [],
-            datetime.now(UTC),
+                mcp_servers, knowledge_areas, user_id, updated_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)""",
+            name, description, prompt_template,
+            tools or [], mcp_servers or [], knowledge_areas or [],
+            user_id, now,
         )
 
-    async def get_agent_def(self, name: str) -> dict | None:
+    async def get_agent_def(self, name: str, user_id: str | None = None) -> dict | None:
+        """Get agent by name. Checks user's own first, then instance-level."""
+        if user_id:
+            row = await self._pool.fetchrow(
+                "SELECT * FROM agent_defs WHERE name = $1 AND user_id = $2", name, user_id
+            )
+            if row:
+                return dict(row)
         row = await self._pool.fetchrow(
-            "SELECT * FROM agent_defs WHERE name = $1", name
+            "SELECT * FROM agent_defs WHERE name = $1 AND user_id IS NULL", name
         )
         return dict(row) if row else None
 
-    async def list_agent_defs(self) -> list[dict]:
-        rows = await self._pool.fetch(
-            "SELECT * FROM agent_defs ORDER BY name"
-        )
+    async def list_agent_defs(self, user_id: str | None = None) -> list[dict]:
+        """List agents visible to a user: their own + instance-level."""
+        if user_id:
+            rows = await self._pool.fetch(
+                "SELECT * FROM agent_defs WHERE user_id IS NULL OR user_id = $1 ORDER BY name",
+                user_id,
+            )
+        else:
+            rows = await self._pool.fetch(
+                "SELECT * FROM agent_defs WHERE user_id IS NULL ORDER BY name"
+            )
         return [dict(r) for r in rows]
 
-    async def delete_agent_def(self, name: str) -> None:
-        await self._pool.execute(
-            "DELETE FROM agent_defs WHERE name = $1", name
-        )
+    async def delete_agent_def(self, name: str, user_id: str | None = None) -> None:
+        if user_id:
+            await self._pool.execute(
+                "DELETE FROM agent_defs WHERE name = $1 AND user_id = $2", name, user_id
+            )
+        else:
+            await self._pool.execute(
+                "DELETE FROM agent_defs WHERE name = $1 AND user_id IS NULL", name
+            )
 
     # -- Agent Shares --
 

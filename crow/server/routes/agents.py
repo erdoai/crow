@@ -9,21 +9,26 @@ from crow.agents.format import agent_to_markdown, markdown_to_agent
 router = APIRouter()
 
 
+def _uid(request: Request) -> str | None:
+    """User ID for DB scoping (set by auth middleware). None = instance-level."""
+    return getattr(request.state, "user_id", None)
+
+
 # -- CRUD --
 
 
 @router.get("/agents")
 async def list_agents(request: Request):
-    """List all registered agents."""
+    """List agents visible to the current user (own + instance-level)."""
     db = request.app.state.db
-    return await db.list_agent_defs()
+    return await db.list_agent_defs(user_id=_uid(request))
 
 
 @router.get("/agents/{name}")
 async def get_agent(name: str, request: Request):
     """Get a single agent definition."""
     db = request.app.state.db
-    agent = await db.get_agent_def(name)
+    agent = await db.get_agent_def(name, user_id=_uid(request))
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     return agent
@@ -55,12 +60,13 @@ async def create_or_update_agent(agent: AgentUpsert, request: Request):
 
 @router.delete("/agents/{name}")
 async def delete_agent(name: str, request: Request):
-    """Delete an agent definition."""
+    """Delete an agent definition owned by the current user."""
+    uid = _uid(request)
     db = request.app.state.db
-    agent = await db.get_agent_def(name)
+    agent = await db.get_agent_def(name, user_id=uid)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    await db.delete_agent_def(name)
+    await db.delete_agent_def(name, user_id=uid)
     return {"status": "deleted", "name": name}
 
 
@@ -85,7 +91,7 @@ async def export_agent(name: str, request: Request):
 
 @router.post("/agents/import")
 async def import_agent(request: Request):
-    """Import an agent from markdown (YAML frontmatter + prompt body)."""
+    """Import an agent from markdown. Scoped to authenticated user (or instance-level)."""
     body = await request.body()
     content = body.decode("utf-8")
 
@@ -94,6 +100,7 @@ async def import_agent(request: Request):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    uid = _uid(request)
     db = request.app.state.db
     await db.upsert_agent_def(
         name=agent_data["name"],
@@ -102,8 +109,9 @@ async def import_agent(request: Request):
         tools=agent_data["tools"],
         mcp_servers=agent_data["mcp_servers"],
         knowledge_areas=agent_data["knowledge_areas"],
+        user_id=uid,
     )
-    return {"status": "imported", "name": agent_data["name"]}
+    return {"status": "imported", "name": agent_data["name"], "scope": "user" if uid else "instance"}
 
 
 # -- Share links --

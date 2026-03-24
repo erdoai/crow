@@ -89,8 +89,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Everything else requires user auth
         user = await get_current_user(request)
         if user:
-            # Attach user to request state for downstream handlers
+            # Attach user + scoping ID to request state for downstream handlers
             request.state.user = user
+            # user_id for DB scoping: None = instance-level (static API key / default user)
+            request.state.user_id = user["id"] if user.get("id") != "default" else None
             return await call_next(request)
 
         # Not authenticated — decide response format

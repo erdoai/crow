@@ -23,11 +23,15 @@ async def onboarding_submit(form: "OnboardingForm", request: Request):
     return {"status": "ok", "redirect": "/dashboard"}
 
 
+def _uid(request: Request) -> str | None:
+    """User ID for DB scoping (set by auth middleware). None = instance-level."""
+    return getattr(request.state, "user_id", None)
+
+
 @router.get("/api/dashboard/views")
 async def list_views(request: Request):
     """Return dashboard views visible to the current user (own + instance-level)."""
-    user = await get_current_user(request)
-    user_id = user["id"] if user and user["id"] != "default" else None
+    user_id = _uid(request)
 
     # File-based views from crow.yml (always instance-level)
     file_views = getattr(request.app.state, "dashboard_config", {}).get("views", {})
@@ -61,10 +65,7 @@ async def list_views(request: Request):
 @router.post("/api/dashboard/views")
 async def upload_view(request: Request):
     """Upload a dashboard view. Scoped to the authenticated user (or instance-level if static API key)."""
-    user = await get_current_user(request)
-    if not user:
-        raise HTTPException(status_code=401)
-    user_id = user["id"] if user["id"] != "default" else None
+    user_id = _uid(request)
 
     db = request.app.state.db
     content_type = request.headers.get("content-type", "")
@@ -101,10 +102,7 @@ async def upload_view(request: Request):
 @router.delete("/api/dashboard/views/{name}")
 async def delete_view(name: str, request: Request):
     """Delete a dashboard view owned by the current user."""
-    user = await get_current_user(request)
-    if not user:
-        raise HTTPException(status_code=401)
-    user_id = user["id"] if user["id"] != "default" else None
+    user_id = _uid(request)
 
     db = request.app.state.db
     deleted = await db.delete_dashboard_view(name, user_id=user_id)
@@ -125,7 +123,7 @@ async def dashboard_data(request: Request):
 
     db = request.app.state.db
 
-    agents = await db.list_agent_defs()
+    agents = await db.list_agent_defs(user_id=_uid(request))
     conversations = await db.list_conversations(
         limit=10, user_id=user["id"] if auth_enabled else None, exclude_delegates=True
     )
