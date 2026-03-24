@@ -18,10 +18,14 @@ def _uid(request: Request) -> str | None:
 
 
 @router.get("/agents")
-async def list_agents(request: Request):
-    """List agents visible to the current user (own + instance-level)."""
+async def list_agents(
+    request: Request,
+    parent: str | None = None,
+    all: bool = False,
+):
+    """List agents. Default: top-level only. ?parent=X for sub-agents, ?all=true for everything."""
     db = request.app.state.db
-    return await db.list_agent_defs(user_id=_uid(request))
+    return await db.list_agent_defs(user_id=_uid(request), parent=parent, include_all=all)
 
 
 @router.get("/agents/{name}")
@@ -110,6 +114,9 @@ async def import_agent(request: Request):
         mcp_servers=agent_data["mcp_servers"],
         knowledge_areas=agent_data["knowledge_areas"],
         user_id=uid,
+        parent_agent=agent_data.get("parent_agent"),
+        max_iterations=agent_data.get("max_iterations"),
+        mcp_configs=agent_data.get("mcp_configs"),
     )
     return {"status": "imported", "name": agent_data["name"], "scope": "user" if uid else "instance"}
 

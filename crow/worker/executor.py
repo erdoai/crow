@@ -155,6 +155,31 @@ BUILTIN_TOOLS = {
             "required": ["name"],
         },
     },
+    "delegate_parallel": {
+        "name": "delegate_parallel",
+        "description": (
+            "Delegate tasks to multiple agents in parallel. "
+            "All agents run concurrently and results are returned together."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "delegations": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "agent_name": {"type": "string", "description": "Agent to delegate to"},
+                            "task": {"type": "string", "description": "Task description for this agent"},
+                        },
+                        "required": ["agent_name", "task"],
+                    },
+                    "description": "List of {agent_name, task} to run in parallel",
+                },
+            },
+            "required": ["delegations"],
+        },
+    },
 }
 
 
@@ -204,6 +229,50 @@ async def execute_builtin(
             delegate_job_data, settings, server_url, worker_key
         )
         return f"[{agent_name}] {output}"
+
+    elif tool_name == "delegate_parallel":
+        import asyncio as _aio
+        import json as _json
+
+        delegations = tool_input.get("delegations", [])
+        if not delegations:
+            return "No delegations provided."
+
+        async def _run_one(d: dict) -> dict:
+            name = d["agent_name"]
+            task = d["task"]
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{server_url}/agents/{name}", headers=headers, timeout=10,
+                )
+                if resp.status_code != 200:
+                    return {"agent": name, "result": f"Agent '{name}' not found."}
+                agent_def = resp.json()
+
+            delegate_job_data = {
+                "job": {
+                    "agent_name": name, "input": task,
+                    "conversation_id": job.get("conversation_id"),
+                },
+                "agent": {
+                    "name": agent_def["name"],
+                    "description": agent_def.get("description", ""),
+                    "prompt_template": agent_def.get("prompt_template", ""),
+                    "tools": list(agent_def.get("tools") or []),
+                    "knowledge_areas": list(agent_def.get("knowledge_areas") or []),
+                    "max_iterations": agent_def.get("max_iterations"),
+                },
+                "messages": [],
+                "knowledge": [],
+                "mcp_servers": [],
+            }
+            output, _tokens = await run_agent(
+                delegate_job_data, settings, server_url, worker_key
+            )
+            return {"agent": name, "result": output}
+
+        results = await _aio.gather(*[_run_one(d) for d in delegations])
+        return _json.dumps(list(results), indent=2)
 
     elif tool_name == "knowledge_search":
         async with httpx.AsyncClient() as client:
@@ -299,25 +368,13 @@ async def run_agent(
         return f"Unknown agent: {job['agent_name']}", 0
 
     # Render system prompt
+    sub_agents = job_data.get("sub_agents", [])
     prompt_context = {
         "devbot_url": settings.devbot_url,
         "pilot_url": settings.pilot_url,
+        "sub_agents": sub_agents,
+        "agents": sub_agents,  # backwards compat with PA template that uses {% for agent in agents %}
     }
-    if agent["name"] == "pa":
-        prompt_context["agents"] = [
-            {
-                "name": "monitor",
-                "description": "Watches devbot, pilot, erdo, trading",
-            },
-            {
-                "name": "planner",
-                "description": "Breaks down goals, coordinates work",
-            },
-            {
-                "name": "reviewer",
-                "description": "Reviews PRs and agent outputs",
-            },
-        ]
 
     system_prompt = render_prompt(agent["prompt_template"], prompt_context)
 
@@ -382,7 +439,7 @@ async def run_agent(
             api_key=settings.anthropic_api_key
         )
         total_tokens = 0
-        max_iterations = 10
+        max_iterations = agent.get("max_iterations") or 10
 
         for _ in range(max_iterations):
             kwargs: dict = {

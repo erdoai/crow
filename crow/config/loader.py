@@ -84,13 +84,25 @@ async def import_config(db: Database, config: dict[str, Any]) -> None:
         logger.info("Imported MCP server: %s → %s", name, server["url"])
 
     for name, agent in agents.items():
+        # mcp field can be a list of names or a dict of inline configs
+        mcp_raw = agent.get("mcp", [])
+        if isinstance(mcp_raw, dict):
+            mcp_names = list(mcp_raw.keys())
+            mcp_configs = mcp_raw
+        else:
+            mcp_names = mcp_raw
+            mcp_configs = None
+
         await db.upsert_agent_def(
             name=name,
             description=agent["description"],
             prompt_template=agent["prompt"],
             tools=agent.get("tools", []),
-            mcp_servers=agent.get("mcp", []),
+            mcp_servers=mcp_names,
             knowledge_areas=agent.get("knowledge_areas", []),
+            parent_agent=agent.get("parent"),
+            max_iterations=agent.get("max_iterations"),
+            mcp_configs=mcp_configs,
         )
         logger.info("Imported agent: %s", name)
 
@@ -98,8 +110,8 @@ async def import_config(db: Database, config: dict[str, Any]) -> None:
 async def export_config(db: Database) -> dict[str, Any]:
     """Export current DB config as a dict (for YAML output)."""
     agents = {}
-    for a in await db.list_agent_defs():
-        agents[a["name"]] = {
+    for a in await db.list_agent_defs(include_all=True):
+        entry = {
             "description": a["description"],
             "prompt": a["prompt_template"],
             "tools": list(a["tools"]) if a["tools"] else [],
@@ -108,6 +120,13 @@ async def export_config(db: Database) -> dict[str, Any]:
                 list(a["knowledge_areas"]) if a["knowledge_areas"] else []
             ),
         }
+        if a.get("parent_agent"):
+            entry["parent"] = a["parent_agent"]
+        if a.get("max_iterations"):
+            entry["max_iterations"] = a["max_iterations"]
+        if a.get("mcp_configs"):
+            entry["mcp"] = a["mcp_configs"]  # inline map overrides name list
+        agents[a["name"]] = entry
 
     mcp = {}
     for s in await db.list_mcp_servers():

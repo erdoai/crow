@@ -28,8 +28,14 @@ def agent_to_markdown(agent: dict) -> str:
         frontmatter["tools"] = list(agent["tools"])
     if agent.get("mcp_servers"):
         frontmatter["mcp_servers"] = list(agent["mcp_servers"])
+    if agent.get("mcp_configs"):
+        frontmatter["mcp_servers"] = agent["mcp_configs"]  # inline map overrides list
     if agent.get("knowledge_areas"):
         frontmatter["knowledge_areas"] = list(agent["knowledge_areas"])
+    if agent.get("parent_agent"):
+        frontmatter["parent"] = agent["parent_agent"]
+    if agent.get("max_iterations"):
+        frontmatter["max_iterations"] = agent["max_iterations"]
 
     fm_str = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False).strip()
     return f"---\n{fm_str}\n---\n\n{prompt_content}"
@@ -47,11 +53,23 @@ def markdown_to_agent(content: str) -> dict:
     if not frontmatter or "name" not in frontmatter:
         raise ValueError("Invalid agent file: frontmatter must include 'name'")
 
+    # mcp_servers can be a list of names OR a dict of inline configs
+    mcp_servers_raw = frontmatter.get("mcp_servers", [])
+    if isinstance(mcp_servers_raw, dict):
+        mcp_servers = list(mcp_servers_raw.keys())  # names for the DB column
+        mcp_configs = mcp_servers_raw               # full configs for mcp_configs column
+    else:
+        mcp_servers = mcp_servers_raw
+        mcp_configs = None
+
     return {
         "name": frontmatter["name"],
         "description": frontmatter.get("description", ""),
         "prompt_template": prompt,
         "tools": frontmatter.get("tools", []),
-        "mcp_servers": frontmatter.get("mcp_servers", []),
+        "mcp_servers": mcp_servers,
+        "mcp_configs": mcp_configs,
         "knowledge_areas": frontmatter.get("knowledge_areas", []),
+        "parent_agent": frontmatter.get("parent"),
+        "max_iterations": frontmatter.get("max_iterations"),
     }

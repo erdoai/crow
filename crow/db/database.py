@@ -386,8 +386,14 @@ class Database:
         mcp_servers: list[str] | None = None,
         knowledge_areas: list[str] | None = None,
         user_id: str | None = None,
+        parent_agent: str | None = None,
+        max_iterations: int | None = None,
+        mcp_configs: dict | None = None,
     ) -> None:
+        import json as _json
+
         now = datetime.now(UTC)
+        mcp_configs_json = _json.dumps(mcp_configs) if mcp_configs else None
         # Delete existing then insert (handles NULL user_id correctly)
         if user_id:
             await self._pool.execute(
@@ -400,11 +406,12 @@ class Database:
         await self._pool.execute(
             """INSERT INTO agent_defs
                (name, description, prompt_template, tools,
-                mcp_servers, knowledge_areas, user_id, updated_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)""",
+                mcp_servers, knowledge_areas, user_id,
+                parent_agent, max_iterations, mcp_configs, updated_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11)""",
             name, description, prompt_template,
             tools or [], mcp_servers or [], knowledge_areas or [],
-            user_id, now,
+            user_id, parent_agent, max_iterations, mcp_configs_json, now,
         )
 
     async def get_agent_def(self, name: str, user_id: str | None = None) -> dict | None:
@@ -420,18 +427,46 @@ class Database:
         )
         return dict(row) if row else None
 
-    async def list_agent_defs(self, user_id: str | None = None) -> list[dict]:
-        """List agents visible to a user: their own + instance-level."""
+    async def list_agent_defs(
+        self, user_id: str | None = None,
+        parent: str | None = None, include_all: bool = False,
+    ) -> list[dict]:
+        """List agents visible to a user.
+
+        Default: top-level only (parent IS NULL), user's own + instance-level.
+        parent="trading": sub-agents of trading.
+        include_all=True: everything.
+        """
+        conditions = []
+        params = []
+        idx = 1
+
+        # User scoping: own + instance-level
         if user_id:
-            rows = await self._pool.fetch(
-                "SELECT * FROM agent_defs WHERE user_id IS NULL OR user_id = $1 ORDER BY name",
-                user_id,
-            )
+            conditions.append(f"(user_id IS NULL OR user_id = ${idx})")
+            params.append(user_id)
+            idx += 1
         else:
-            rows = await self._pool.fetch(
-                "SELECT * FROM agent_defs WHERE user_id IS NULL ORDER BY name"
-            )
+            conditions.append("user_id IS NULL")
+
+        # Parent filtering
+        if not include_all:
+            if parent:
+                conditions.append(f"parent_agent = ${idx}")
+                params.append(parent)
+                idx += 1
+            else:
+                conditions.append("parent_agent IS NULL")
+
+        where = " AND ".join(conditions)
+        rows = await self._pool.fetch(
+            f"SELECT * FROM agent_defs WHERE {where} ORDER BY name", *params
+        )
         return [dict(r) for r in rows]
+
+    async def list_sub_agents(self, parent_name: str, user_id: str | None = None) -> list[dict]:
+        """List sub-agents of a specific parent."""
+        return await self.list_agent_defs(user_id=user_id, parent=parent_name)
 
     async def delete_agent_def(self, name: str, user_id: str | None = None) -> None:
         if user_id:

@@ -85,10 +85,27 @@ async def claim_next_job(request: Request, x_worker_key: str = Header()):
             limit=20,
         )
 
-    # Load MCP server configs for this agent
+    # Load MCP server configs — agent-level inline configs override instance-level
     mcp_servers = []
-    if agent_def and agent_def.get("mcp_servers"):
-        for mcp_name in agent_def["mcp_servers"]:
+    if agent_def:
+        # 1. Inline MCP configs from agent (highest priority)
+        agent_mcp_configs = agent_def.get("mcp_configs")
+        if agent_mcp_configs:
+            import json as _json
+            if isinstance(agent_mcp_configs, str):
+                agent_mcp_configs = _json.loads(agent_mcp_configs)
+            for name, config in agent_mcp_configs.items():
+                mcp_servers.append({
+                    "name": name,
+                    "url": config["url"],
+                    "headers": config.get("headers") or {},
+                })
+
+        # 2. Name references → look up in instance-level mcp_servers table
+        resolved_names = {s["name"] for s in mcp_servers}
+        for mcp_name in (agent_def.get("mcp_servers") or []):
+            if mcp_name in resolved_names:
+                continue
             mcp = await db.get_mcp_server(mcp_name)
             if mcp:
                 mcp_servers.append({
@@ -96,6 +113,18 @@ async def claim_next_job(request: Request, x_worker_key: str = Header()):
                     "url": mcp["url"],
                     "headers": mcp.get("headers") or {},
                 })
+
+    # Load sub-agents for orchestrator agents (injected into prompt context)
+    sub_agents = []
+    if agent_def:
+        subs = await db.list_sub_agents(
+            agent_def["name"],
+            user_id=job_user_id,
+        )
+        sub_agents = [
+            {"name": s["name"], "description": s.get("description", "")}
+            for s in subs
+        ]
 
     return {
         "job": job,
@@ -107,7 +136,10 @@ async def claim_next_job(request: Request, x_worker_key: str = Header()):
             "knowledge_areas": list(
                 agent_def.get("knowledge_areas") or []
             ),
+            "max_iterations": agent_def.get("max_iterations"),
+            "parent_agent": agent_def.get("parent_agent"),
         } if agent_def else None,
+        "sub_agents": sub_agents,
         "messages": messages,
         "knowledge": knowledge,
         "mcp_servers": mcp_servers,
