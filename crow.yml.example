@@ -68,10 +68,11 @@ mcp: {}
 #   knowledge_search   — Search PARA knowledge base (semantic + keyword)
 #   knowledge_write    — Save a learning to knowledge base
 #   knowledge_archive  — Archive a knowledge entry
-#   create_agent       — Create a new agent definition
+#   upsert_agent       — Create or update an agent definition
 #   list_agents        — List all agents
 #   delete_agent       — Delete an agent
 #   schedule           — Schedule a future or recurring job
 #   progress_update    — Publish real-time progress to dashboards
 #   create_attachment  — Attach a file to the agent's response
 #   execute_code       — Run Python code in an E2B sandbox
+#   evaluate_run       — Evaluate a completed agent run (LLM-as-judge)

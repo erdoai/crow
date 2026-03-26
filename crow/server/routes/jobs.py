@@ -271,6 +271,24 @@ async def create_job_attachment(
     return {"id": att_id, "filename": payload.filename}
 
 
+@router.get("/{job_id}/evaluation-data")
+async def get_job_evaluation_data(
+    job_id: str,
+    request: Request,
+    x_worker_key: str = Header(),
+):
+    """Worker fetches job + conversation messages for evaluation."""
+    _check_worker_key(request, x_worker_key)
+    db = request.app.state.db
+    job = await db.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    messages = []
+    if job.get("conversation_id"):
+        messages = await db.get_messages(job["conversation_id"])
+    return {"job": dict(job), "messages": [dict(m) for m in messages]}
+
+
 class JobError(BaseModel):
     error: str
 

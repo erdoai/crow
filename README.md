@@ -79,7 +79,7 @@ agents:
 
 Each agent gets:
 - A **system prompt** (Jinja2 template in `crow/agents/prompts/`)
-- **Built-in tools** — `delegate_to_agent`, `delegate_parallel`, `knowledge_search`, `knowledge_write`, `knowledge_archive`, `create_agent`, `list_agents`, `delete_agent`, `schedule`, `progress_update`, `create_attachment`, `execute_code`
+- **Built-in tools** — `delegate_to_agent`, `delegate_parallel`, `knowledge_search`, `knowledge_write`, `knowledge_archive`, `upsert_agent`, `list_agents`, `delete_agent`, `schedule`, `progress_update`, `create_attachment`, `execute_code`, `evaluate_run`
 - **MCP tools** — dynamically discovered from connected MCP servers
 - **PARA knowledge** — persistent learnings in Postgres (Projects, Areas, Resources, Archives)
 

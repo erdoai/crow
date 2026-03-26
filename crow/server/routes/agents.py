@@ -48,7 +48,7 @@ class AgentUpsert(BaseModel):
 
 
 @router.post("/agents")
-async def create_or_update_agent(agent: AgentUpsert, request: Request):
+async def upsert_agent(agent: AgentUpsert, request: Request):
     """Create or update an agent definition."""
     db = request.app.state.db
     await db.upsert_agent_def(
