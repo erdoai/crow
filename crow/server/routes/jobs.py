@@ -4,7 +4,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel
 
 from crow.auth.dependencies import get_current_user
-from crow.events.types import JOB_PROGRESS, MESSAGE_RESPONSE, STATE_UPDATED, Event
+from crow.events.types import JOB_PROGRESS, MESSAGE_CHUNK, MESSAGE_RESPONSE, STATE_UPDATED, Event
 
 router = APIRouter(prefix="/jobs")
 
@@ -149,6 +149,40 @@ async def claim_next_job(request: Request, x_worker_key: str = Header()):
         "knowledge": knowledge,
         "mcp_servers": mcp_servers,
     }
+
+
+class ChunkPayload(BaseModel):
+    text: str
+    agent_name: str | None = None
+
+
+@router.post("/{job_id}/chunk")
+async def job_chunk(
+    job_id: str,
+    payload: ChunkPayload,
+    request: Request,
+    x_worker_key: str = Header(),
+):
+    """Worker streams a text chunk during agent execution."""
+    _check_worker_key(request, x_worker_key)
+    db = request.app.state.db
+    bus = request.app.state.bus
+
+    # Resolve conversation_id from job
+    job = await db.get_job(job_id)
+    if not job or not job.get("conversation_id"):
+        return {"status": "ok"}
+
+    await bus.publish(Event(
+        type=MESSAGE_CHUNK,
+        data={
+            "conversation_id": job["conversation_id"],
+            "job_id": job_id,
+            "text": payload.text,
+            "agent_name": payload.agent_name,
+        },
+    ))
+    return {"status": "ok"}
 
 
 class ProgressPayload(BaseModel):

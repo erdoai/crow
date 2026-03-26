@@ -31,6 +31,34 @@ export function useCrowRuntime(
     if (!conversationId) return
 
     const source = new EventSource(`/conversations/${conversationId}/stream`)
+    let streamingId: string | null = null
+    let streamedText = ''
+
+    source.addEventListener('chunk', (e) => {
+      const data = JSON.parse(e.data) as {
+        text: string
+        agent_name: string | null
+        job_id: string
+      }
+      if (!streamingId) {
+        streamingId = `streaming-${data.job_id}`
+      }
+      streamedText += data.text
+      const id = streamingId
+      const content = streamedText
+      const agentName = data.agent_name
+      setMessages((prev) => {
+        const existing = prev.findIndex((m) => m.id === id)
+        const msg: Message = { id, role: 'assistant', content, agent_name: agentName }
+        if (existing >= 0) {
+          const next = [...prev]
+          next[existing] = msg
+          return next
+        }
+        return [...prev, msg]
+      })
+    })
+
     source.addEventListener('message', (e) => {
       const data = JSON.parse(e.data) as {
         text: string
@@ -38,15 +66,21 @@ export function useCrowRuntime(
         timestamp: string
         event_id: string
       }
-      setMessages((prev) => [
-        ...prev,
-        {
+      // Replace streaming message with final version
+      setMessages((prev) => {
+        const finalMsg: Message = {
           id: data.event_id,
           role: 'assistant',
           content: data.text,
           agent_name: data.agent_name,
-        },
-      ])
+        }
+        if (streamingId) {
+          return prev.map((m) => m.id === streamingId ? finalMsg : m)
+        }
+        return [...prev, finalMsg]
+      })
+      streamingId = null
+      streamedText = ''
       setIsRunning(false)
     })
 

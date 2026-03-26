@@ -940,10 +940,30 @@ async def run_agent(
                 text_parts = [
                     b.text for b in response.content if b.type == "text"
                 ]
-                return (
-                    "\n".join(text_parts) or "(no response)",
-                    total_tokens,
-                )
+                output_text = "\n".join(text_parts) or "(no response)"
+
+                # Stream the final text response as chunks
+                if job.get("conversation_id"):
+                    chunk_headers = {"x-worker-key": worker_key}
+                    chunk_url = f"{server_url}/jobs/{job.get('id')}/chunk"
+                    async with httpx.AsyncClient() as hc:
+                        # Send in ~100 char chunks for smooth streaming
+                        pos = 0
+                        while pos < len(output_text):
+                            chunk = output_text[pos:pos + 100]
+                            await hc.post(
+                                chunk_url,
+                                headers=chunk_headers,
+                                json={
+                                    "text": chunk,
+                                    "agent_name": job.get("agent_name"),
+                                },
+                                timeout=5,
+                            )
+                            pos += 100
+                            await asyncio.sleep(0.03)
+
+                return output_text, total_tokens
 
             if response.stop_reason == "tool_use":
                 api_messages.append({

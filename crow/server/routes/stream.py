@@ -8,7 +8,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
 from crow.auth.dependencies import get_current_user
-from crow.events.types import MESSAGE_RESPONSE, Event
+from crow.events.types import MESSAGE_CHUNK, MESSAGE_RESPONSE, Event
 from crow.server.routes.conversations import _verify_conversation_access
 
 logger = logging.getLogger(__name__)
@@ -30,6 +30,7 @@ async def stream_conversation(conversation_id: str, request: Request):
             await queue.put(event)
 
     bus.subscribe(MESSAGE_RESPONSE, handler)
+    bus.subscribe(MESSAGE_CHUNK, handler)
 
     async def event_generator():
         try:
@@ -38,13 +39,21 @@ async def stream_conversation(conversation_id: str, request: Request):
                     break
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=30.0)
-                    data = json.dumps({
-                        "text": event.data["text"],
-                        "agent_name": event.data.get("agent_name"),
-                        "timestamp": event.timestamp.isoformat(),
-                        "event_id": event.id,
-                    })
-                    yield f"id: {event.id}\nevent: message\ndata: {data}\n\n"
+                    if event.type == MESSAGE_CHUNK:
+                        data = json.dumps({
+                            "text": event.data["text"],
+                            "agent_name": event.data.get("agent_name"),
+                            "job_id": event.data.get("job_id"),
+                        })
+                        yield f"id: {event.id}\nevent: chunk\ndata: {data}\n\n"
+                    else:
+                        data = json.dumps({
+                            "text": event.data["text"],
+                            "agent_name": event.data.get("agent_name"),
+                            "timestamp": event.timestamp.isoformat(),
+                            "event_id": event.id,
+                        })
+                        yield f"id: {event.id}\nevent: message\ndata: {data}\n\n"
                 except TimeoutError:
                     yield ": keepalive\n\n"
         except asyncio.CancelledError:

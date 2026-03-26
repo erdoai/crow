@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import {
   ThreadPrimitive,
   ComposerPrimitive,
@@ -111,7 +112,14 @@ function Composer() {
 
 function TypingIndicator() {
   const runtime = useThreadRuntime()
-  const isRunning = runtime.getState().isRunning
+  const [isRunning, setIsRunning] = useState(false)
+
+  useEffect(() => {
+    setIsRunning(runtime.getState().isRunning)
+    return runtime.subscribe(() => {
+      setIsRunning(runtime.getState().isRunning)
+    })
+  }, [runtime])
 
   if (!isRunning) return null
 
