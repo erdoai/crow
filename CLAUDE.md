@@ -312,11 +312,16 @@ pytest                          # test
 
 ### Pre-commit checks
 
-Always run before committing:
+**MANDATORY — run these before EVERY commit that touches Python or TypeScript. No exceptions. Do not skip. The Docker build WILL fail if you don't.**
 
 1. **Python:** `ruff check .` from repo root
 2. **TypeScript:** `cd web && npx tsc --noEmit` — the tsconfig has `noUnusedLocals` and `noUnusedParameters` enabled, so unused imports/variables are build errors. The Docker build runs `npm run build` (`tsc -b && vite build`) and will fail on these.
 3. **Vite build:** `cd web && npx vite build` to catch any bundling issues
+
+**Common mistakes that break the Docker build:**
+- Adding a field to a TypeScript interface but not setting it everywhere the type is constructed (e.g. adding `mode` to `Job` but missing it in the reducer's `newJob` object)
+- Unused imports or variables (tsc strict mode rejects these)
+- Referencing a renamed DB column in a query (grep the old name across `crow/db/database.py` after any migration that renames)
 
 ## Publishing
 
