@@ -52,10 +52,13 @@ function reducer(state: State, action: Action): State {
       return { ...state, jobs: [newJob, ...state.jobs] }
     }
     case 'JOB_COMPLETED':
-      // Remove completed jobs — they're visible in conversations, not here
       return {
         ...state,
-        jobs: state.jobs.filter(j => j.id !== action.data.job_id),
+        jobs: state.jobs.map(j =>
+          j.id === action.data.job_id
+            ? { ...j, status: 'completed' as const, completed_at: new Date().toISOString() }
+            : j
+        ),
       }
     case 'JOB_FAILED':
       return {
@@ -94,13 +97,7 @@ export function useActivityStream(enabled: boolean) {
   // Initial data load
   useEffect(() => {
     if (!enabled) return
-    Promise.all([
-      fetchJSON<Job[]>('/jobs?status=running&limit=20'),
-      fetchJSON<Job[]>('/jobs?status=pending&limit=20'),
-      fetchJSON<Job[]>('/jobs?status=failed&limit=5'),
-    ]).then(([running, pending, failed]) =>
-      dispatch({ type: 'INIT_JOBS', jobs: [...running, ...pending, ...failed] })
-    )
+    fetchJSON<Job[]>('/jobs?limit=50').then(jobs => dispatch({ type: 'INIT_JOBS', jobs }))
     fetchJSON<ScheduledJob[]>('/scheduled-jobs').then(scheduledJobs => dispatch({ type: 'INIT_SCHEDULED', scheduledJobs }))
     fetchJSON<Worker[]>('/workers').then(workers => dispatch({ type: 'INIT_WORKERS', workers }))
   }, [enabled])
