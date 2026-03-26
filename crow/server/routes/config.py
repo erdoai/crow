@@ -1,12 +1,19 @@
 """Config routes — MCP servers, settings import/export."""
 
 import yaml
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel
 
 from crow.config.loader import export_config, import_config
 
 router = APIRouter()
+
+
+def _check_admin_key(request: Request, x_worker_key: str) -> None:
+    """Settings import requires the worker API key (admin-level access)."""
+    expected = request.app.state.settings.worker_api_key
+    if x_worker_key != expected:
+        raise HTTPException(status_code=401, detail="Admin access required")
 
 
 # -- MCP Servers --
@@ -51,8 +58,9 @@ async def delete_mcp_server(name: str, request: Request):
 
 
 @router.post("/settings/import")
-async def import_settings(request: Request):
-    """Import crow.yml config from request body (YAML string)."""
+async def import_settings(request: Request, x_worker_key: str = Header()):
+    """Import crow.yml config from request body (YAML string). Requires admin key."""
+    _check_admin_key(request, x_worker_key)
     body = await request.body()
     config = yaml.safe_load(body.decode()) or {}
     db = request.app.state.db

@@ -394,10 +394,14 @@ def settings_import(
     with open(path) as f:
         body = f.read()
 
+    worker_key = os.environ.get("CROW_WORKER_API_KEY", "")
     resp = _http().post(
         f"{server_url}/settings/import",
         content=body,
-        headers={"Content-Type": "application/yaml"},
+        headers={
+            "Content-Type": "application/yaml",
+            "x-worker-key": worker_key,
+        },
     )
     resp.raise_for_status()
     console.print(f"[green]Imported config from {path}[/green]")
