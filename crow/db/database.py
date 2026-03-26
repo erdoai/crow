@@ -330,8 +330,8 @@ class Database:
         param_idx += 1
         params.append(limit)
 
-        cols = "id, agent_name, category, title, content, source, tags"
-        cols += ", created_at, updated_at"
+        cols = "id, agent_name, category, title, content"
+        cols += ", source_type, source_ref, tags, created_at, updated_at"
         sql = f"SELECT {cols} FROM knowledge {where} {order} LIMIT ${param_idx}"
         rows = await self._pool.fetch(
             sql,
