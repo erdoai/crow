@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import type { Job } from '../../api'
-import { Circle, CircleCheck, CircleX, Clock } from 'lucide-react'
+import { Circle, CircleX, Clock } from 'lucide-react'
 
 function Elapsed({ since }: { since: string }) {
   const [, tick] = useState(0)
@@ -15,15 +15,17 @@ function Elapsed({ since }: { since: string }) {
   return <span>{m}m {s % 60}s</span>
 }
 
-const statusIcon = {
+const statusIcon: Record<string, React.ReactNode> = {
   pending: <Clock className="h-3 w-3 text-muted-foreground" />,
   running: <Circle className="h-3 w-3 text-green-500 fill-green-500" />,
-  completed: <CircleCheck className="h-3 w-3 text-muted-foreground" />,
   failed: <CircleX className="h-3 w-3 text-destructive" />,
 }
 
 export default function JobList({ jobs }: { jobs: Job[] }) {
-  const sorted = [...jobs].sort((a, b) => {
+  // Only show active jobs + recent failures — completed jobs are just chat noise
+  const active = jobs.filter(j => j.status === 'running' || j.status === 'pending')
+  const failed = jobs.filter(j => j.status === 'failed').slice(0, 3)
+  const sorted = [...active, ...failed].sort((a, b) => {
     const order = { running: 0, pending: 1, failed: 2, completed: 3 }
     const diff = order[a.status] - order[b.status]
     if (diff !== 0) return diff
@@ -31,7 +33,7 @@ export default function JobList({ jobs }: { jobs: Job[] }) {
   })
 
   if (sorted.length === 0) {
-    return <p className="text-sm text-muted-foreground px-3 py-4">no jobs yet</p>
+    return <p className="text-sm text-muted-foreground px-3 py-4">nothing running</p>
   }
 
   return (
@@ -46,9 +48,6 @@ export default function JobList({ jobs }: { jobs: Job[] }) {
               <span className="text-xs text-muted-foreground tabular-nums">
                 <Elapsed since={job.started_at} />
               </span>
-            )}
-            {job.status === 'completed' && (
-              <span className="text-xs text-muted-foreground">done</span>
             )}
             {job.status === 'failed' && (
               <span className="text-xs text-destructive">failed</span>
