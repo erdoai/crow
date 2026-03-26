@@ -135,7 +135,7 @@ mcp_servers:
 | `knowledge_areas` | no | Scopes for PARA knowledge reads/writes |
 | `max_iterations` | no | Max tool-use loops for this agent (defaults to server default) |
 
-**Available built-in tools:** `delegate_to_agent`, `delegate_parallel`, `knowledge_search`, `knowledge_write`, `knowledge_archive`, `upsert_agent`, `list_agents`, `delete_agent`, `schedule`, `progress_update`, `create_attachment`, `execute_code`, `evaluate_run`
+**Available built-in tools:** `delegate_to_agent`, `delegate_parallel`, `knowledge_search`, `knowledge_write`, `knowledge_archive`, `upsert_agent`, `list_agents`, `delete_agent`, `schedule`, `progress_update`, `create_attachment`, `execute_code`, `browse_web`, `evaluate_run`
 
 ### Sub-agents and orchestration
 
