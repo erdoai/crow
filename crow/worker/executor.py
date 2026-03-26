@@ -1,8 +1,10 @@
 """Agent executor — runs a single agent job using the Anthropic API."""
 
 import asyncio
+import base64
 import json
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 
 import anthropic
@@ -233,7 +235,10 @@ BUILTIN_TOOLS = {
                 "packages": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Pip packages to install before running (e.g. ['requests', 'beautifulsoup4'])",
+                    "description": (
+                        "Pip packages to install before running"
+                        " (e.g. ['requests', 'beautifulsoup4'])"
+                    ),
                 },
             },
             "required": ["code"],
@@ -250,7 +255,10 @@ BUILTIN_TOOLS = {
             "properties": {
                 "filename": {
                     "type": "string",
-                    "description": "Filename with extension (e.g. 'cover_letter.md', 'report.csv')",
+                    "description": (
+                        "Filename with extension"
+                        " (e.g. 'cover_letter.md', 'report.csv')"
+                    ),
                 },
                 "content": {
                     "type": "string",
@@ -304,8 +312,14 @@ BUILTIN_TOOLS = {
                     "items": {
                         "type": "object",
                         "properties": {
-                            "agent_name": {"type": "string", "description": "Agent to delegate to"},
-                            "task": {"type": "string", "description": "Task description for this agent"},
+                            "agent_name": {
+                                "type": "string",
+                                "description": "Agent to delegate to",
+                            },
+                            "task": {
+                                "type": "string",
+                                "description": "Task description for this agent",
+                            },
                         },
                         "required": ["agent_name", "task"],
                     },
@@ -318,6 +332,411 @@ BUILTIN_TOOLS = {
 }
 
 
+# -- Tool handler context and dispatch --
+
+
+@dataclass
+class ToolContext:
+    server_url: str
+    headers: dict
+    job: dict
+    settings: Settings | None
+
+
+async def _handle_delegate_to_agent(inp: dict, ctx: ToolContext) -> str:
+    agent_name = inp["agent_name"]
+    task = inp["task"]
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{ctx.server_url}/agents/{agent_name}",
+            headers=ctx.headers,
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            return f"Agent '{agent_name}' not found."
+        agent_def = resp.json()
+
+    delegate_job_data = {
+        "job": {
+            "agent_name": agent_name,
+            "input": task,
+            "conversation_id": ctx.job.get("conversation_id"),
+        },
+        "agent": {
+            "name": agent_def["name"],
+            "description": agent_def.get("description", ""),
+            "prompt_template": agent_def.get("prompt_template", ""),
+            "tools": list(agent_def.get("tools") or []),
+            "knowledge_areas": list(
+                agent_def.get("knowledge_areas") or []
+            ),
+        },
+        "messages": [],
+        "knowledge": [],
+        "mcp_servers": [],
+    }
+    output, _tokens = await run_agent(
+        delegate_job_data, ctx.settings, ctx.server_url,
+        ctx.headers["x-worker-key"],
+    )
+    return f"[{agent_name}] {output}"
+
+
+async def _handle_delegate_parallel(inp: dict, ctx: ToolContext) -> str:
+    delegations = inp.get("delegations", [])
+    if not delegations:
+        return "No delegations provided."
+
+    async def _run_one(d: dict) -> dict:
+        name = d["agent_name"]
+        task = d["task"]
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{ctx.server_url}/agents/{name}",
+                headers=ctx.headers,
+                timeout=10,
+            )
+            if resp.status_code != 200:
+                return {"agent": name, "result": f"Agent '{name}' not found."}
+            agent_def = resp.json()
+
+        delegate_job_data = {
+            "job": {
+                "agent_name": name,
+                "input": task,
+                "conversation_id": ctx.job.get("conversation_id"),
+            },
+            "agent": {
+                "name": agent_def["name"],
+                "description": agent_def.get("description", ""),
+                "prompt_template": agent_def.get("prompt_template", ""),
+                "tools": list(agent_def.get("tools") or []),
+                "knowledge_areas": list(
+                    agent_def.get("knowledge_areas") or []
+                ),
+                "max_iterations": agent_def.get("max_iterations"),
+            },
+            "messages": [],
+            "knowledge": [],
+            "mcp_servers": [],
+        }
+        output, _tokens = await run_agent(
+            delegate_job_data, ctx.settings, ctx.server_url,
+            ctx.headers["x-worker-key"],
+        )
+        return {"agent": name, "result": output}
+
+    results = await asyncio.gather(*[_run_one(d) for d in delegations])
+    return json.dumps(list(results), indent=2)
+
+
+async def _handle_knowledge_search(inp: dict, ctx: ToolContext) -> str:
+    async with httpx.AsyncClient() as client:
+        params = {
+            k: v
+            for k, v in {"category": inp.get("category")}.items()
+            if v
+        }
+        resp = await client.get(
+            f"{ctx.server_url}/agents/{ctx.job['agent_name']}/knowledge",
+            params=params,
+            timeout=10,
+        )
+        return resp.text
+
+
+async def _handle_knowledge_write(inp: dict, ctx: ToolContext) -> str:
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{ctx.server_url}/agents/{ctx.job['agent_name']}/knowledge",
+            headers=ctx.headers,
+            json={
+                "category": inp["category"],
+                "title": inp["title"],
+                "content": inp["content"],
+                "tags": inp.get("tags", []),
+            },
+            timeout=10,
+        )
+        return resp.text
+
+
+async def _handle_knowledge_archive(inp: dict, ctx: ToolContext) -> str:
+    async with httpx.AsyncClient() as client:
+        kid = inp["knowledge_id"]
+        resp = await client.post(
+            f"{ctx.server_url}/agents/{ctx.job['agent_name']}"
+            f"/knowledge/{kid}/archive",
+            headers=ctx.headers,
+            timeout=10,
+        )
+        return resp.text
+
+
+async def _handle_upsert_agent(inp: dict, ctx: ToolContext) -> str:
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{ctx.server_url}/agents",
+            json={
+                "name": inp["name"],
+                "description": inp["description"],
+                "prompt_template": inp.get("prompt_template", ""),
+                "tools": inp.get("tools", []),
+                "mcp_servers": inp.get("mcp_servers", []),
+                "knowledge_areas": inp.get("knowledge_areas", []),
+            },
+            timeout=10,
+        )
+        return resp.text
+
+
+async def _handle_list_agents(inp: dict, ctx: ToolContext) -> str:
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{ctx.server_url}/agents",
+            timeout=10,
+        )
+        return resp.text
+
+
+async def _handle_delete_agent(inp: dict, ctx: ToolContext) -> str:
+    async with httpx.AsyncClient() as client:
+        resp = await client.delete(
+            f"{ctx.server_url}/agents/{inp['name']}",
+            timeout=10,
+        )
+        return resp.text
+
+
+async def _handle_schedule(inp: dict, ctx: ToolContext) -> str:
+    payload = {
+        "agent_name": inp["agent_name"],
+        "input": inp["input"],
+        "conversation_id": ctx.job.get("conversation_id"),
+        "user_id": ctx.job.get("user_id"),
+        "created_by_job_id": ctx.job.get("id"),
+        "replace": inp.get("replace", False),
+    }
+    if inp.get("cron"):
+        payload["cron"] = inp["cron"]
+    elif inp.get("delay_seconds"):
+        payload["delay_seconds"] = inp["delay_seconds"]
+    else:
+        payload["delay_seconds"] = 60  # default 1 minute
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{ctx.server_url}/scheduled-jobs",
+            headers=ctx.headers,
+            json=payload,
+            timeout=10,
+        )
+        if resp.status_code >= 400:
+            return f"Schedule failed: {resp.text}"
+        data = resp.json()
+        if inp.get("cron"):
+            kind = f"cron={inp['cron']}"
+        else:
+            kind = f"in {payload.get('delay_seconds')}s"
+        return (
+            f"Scheduled {inp['agent_name']} ({kind}), id={data['id']}"
+        )
+
+
+async def _handle_execute_code(inp: dict, ctx: ToolContext) -> str:
+    try:
+        from e2b_code_interpreter import AsyncSandbox
+    except ImportError:
+        return (
+            "e2b-code-interpreter package not installed."
+            " Run: pip install e2b-code-interpreter"
+        )
+
+    code = inp["code"]
+    packages = inp.get("packages") or []
+
+    try:
+        sandbox = await AsyncSandbox.create(timeout=120)
+        try:
+            if packages:
+                pip_cmd = f"pip install {' '.join(packages)}"
+                await sandbox.commands.run(pip_cmd, timeout=60)
+
+            execution = await sandbox.run_code(code, timeout=90)
+
+            parts = []
+            if execution.logs.stdout:
+                parts.append(
+                    "stdout:\n" + "\n".join(execution.logs.stdout)
+                )
+            if execution.logs.stderr:
+                parts.append(
+                    "stderr:\n" + "\n".join(execution.logs.stderr)
+                )
+            if execution.error:
+                parts.append(
+                    f"error: {execution.error.name}:"
+                    f" {execution.error.value}"
+                )
+            if execution.results:
+                for r in execution.results:
+                    if hasattr(r, "text") and r.text:
+                        parts.append(f"result: {r.text}")
+
+            return "\n".join(parts) if parts else "(no output)"
+        finally:
+            await sandbox.kill()
+    except Exception as e:
+        return f"Code execution failed: {e}"
+
+
+async def _handle_create_attachment(inp: dict, ctx: ToolContext) -> str:
+    content = inp["content"]
+    content_b64 = base64.b64encode(content.encode("utf-8")).decode("ascii")
+    ct = inp.get("content_type", "text/plain")
+    filename = inp["filename"]
+    size_bytes = len(content.encode("utf-8"))
+    job_id = ctx.job.get("id", "unknown")
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{ctx.server_url}/jobs/{job_id}/attachments",
+            headers=ctx.headers,
+            json={
+                "filename": filename,
+                "content_type": ct,
+                "data": content_b64,
+                "size_bytes": size_bytes,
+            },
+            timeout=30,
+        )
+        if resp.status_code >= 400:
+            return f"Failed to create attachment: {resp.text}"
+        att_data = resp.json()
+        return f"Created attachment: {filename} (id={att_data['id']})"
+
+
+async def _handle_progress_update(inp: dict, ctx: ToolContext) -> str:
+    job_id = ctx.job.get("id", "unknown")
+    async with httpx.AsyncClient() as client:
+        await client.post(
+            f"{ctx.server_url}/jobs/{job_id}/progress",
+            headers=ctx.headers,
+            json={
+                "status": inp["status"],
+                "data": inp.get("data"),
+                "agent_name": ctx.job.get("agent_name"),
+            },
+            timeout=10,
+        )
+        return f"Progress published: {inp['status']}"
+
+
+async def _handle_evaluate_run(inp: dict, ctx: ToolContext) -> str:
+    eval_job_id = inp["job_id"]
+    criteria = inp.get("criteria", "")
+
+    # Fetch job + conversation messages
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{ctx.server_url}/jobs/{eval_job_id}/evaluation-data",
+            headers=ctx.headers,
+            timeout=30,
+        )
+        if resp.status_code != 200:
+            return json.dumps({"error": f"Job {eval_job_id} not found"})
+        eval_data = resp.json()
+
+    eval_job = eval_data["job"]
+    eval_messages = eval_data["messages"]
+
+    if eval_job.get("status") != "completed":
+        return json.dumps({
+            "error": (
+                f"Job status is '{eval_job.get('status')}',"
+                " not 'completed'"
+            )
+        })
+
+    # Build conversation transcript
+    conversation_text = "\n".join(
+        f"[{m['role']}] {m['content']}" for m in eval_messages
+    )
+
+    eval_system = (
+        "You are an expert evaluator of AI agent runs. "
+        "Analyze the agent's performance and return ONLY valid JSON:\n"
+        "{\n"
+        '  "score": <integer 1-5, 1=poor 3=adequate 5=excellent>,\n'
+        '  "summary": "<one paragraph assessment>",\n'
+        '  "strengths": ["<strength>", ...],\n'
+        '  "weaknesses": ["<weakness>", ...],\n'
+        '  "suggestions": ["<actionable improvement>", ...]\n'
+        "}"
+    )
+
+    criteria_section = (
+        f"\n\nEvaluation criteria: {criteria}" if criteria else ""
+    )
+
+    eval_user_msg = (
+        f"Evaluate this agent run:\n\n"
+        f"Agent: {eval_job.get('agent_name', 'unknown')}\n"
+        f"Task input: {eval_job.get('input', '')}\n"
+        f"Final output: {eval_job.get('output', '')}\n"
+        f"Tokens used: {eval_job.get('tokens_used', 'unknown')}\n\n"
+        f"Conversation ({len(eval_messages)} messages):\n"
+        f"{conversation_text}"
+        f"{criteria_section}"
+    )
+
+    # Call Claude as judge
+    if not ctx.settings or not ctx.settings.anthropic_api_key:
+        return json.dumps({"error": "No Anthropic API key configured"})
+
+    ai_client = anthropic.AsyncAnthropic(
+        api_key=ctx.settings.anthropic_api_key,
+    )
+    response = await ai_client.messages.create(
+        model=ctx.settings.anthropic_model,
+        max_tokens=1024,
+        system=eval_system,
+        messages=[{"role": "user", "content": eval_user_msg}],
+    )
+
+    result_text = response.content[0].text
+    try:
+        evaluation = json.loads(result_text)
+    except json.JSONDecodeError:
+        evaluation = {"raw": result_text, "parse_error": True}
+
+    evaluation["job_id"] = eval_job_id
+    evaluation["agent_name"] = eval_job.get("agent_name")
+    evaluation["tokens_used_by_evaluation"] = (
+        response.usage.input_tokens + response.usage.output_tokens
+    )
+
+    return json.dumps(evaluation, indent=2)
+
+
+# Maps tool name → handler function
+TOOL_HANDLERS: dict[str, callable] = {
+    "delegate_to_agent": _handle_delegate_to_agent,
+    "delegate_parallel": _handle_delegate_parallel,
+    "knowledge_search": _handle_knowledge_search,
+    "knowledge_write": _handle_knowledge_write,
+    "knowledge_archive": _handle_knowledge_archive,
+    "upsert_agent": _handle_upsert_agent,
+    "list_agents": _handle_list_agents,
+    "delete_agent": _handle_delete_agent,
+    "schedule": _handle_schedule,
+    "execute_code": _handle_execute_code,
+    "create_attachment": _handle_create_attachment,
+    "progress_update": _handle_progress_update,
+    "evaluate_run": _handle_evaluate_run,
+}
+
+
 async def execute_builtin(
     tool_name: str,
     tool_input: dict,
@@ -327,352 +746,17 @@ async def execute_builtin(
     settings: "Settings | None" = None,
 ) -> str:
     """Execute a built-in tool."""
-    headers = {"x-worker-key": worker_key}
+    handler = TOOL_HANDLERS.get(tool_name)
+    if not handler:
+        return json.dumps({"error": f"Unknown built-in: {tool_name}"})
 
-    if tool_name == "delegate_to_agent":
-        # Run delegate agent inline — no separate job/conversation.
-        agent_name = tool_input["agent_name"]
-        task = tool_input["task"]
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{server_url}/agents/{agent_name}",
-                headers=headers,
-                timeout=10,
-            )
-            if resp.status_code != 200:
-                return f"Agent '{agent_name}' not found."
-            agent_def = resp.json()
-
-        delegate_job_data = {
-            "job": {
-                "agent_name": agent_name,
-                "input": task,
-                "conversation_id": job.get("conversation_id"),
-            },
-            "agent": {
-                "name": agent_def["name"],
-                "description": agent_def.get("description", ""),
-                "prompt_template": agent_def.get("prompt_template", ""),
-                "tools": list(agent_def.get("tools") or []),
-                "knowledge_areas": list(agent_def.get("knowledge_areas") or []),
-            },
-            "messages": [],  # fresh context for delegate
-            "knowledge": [],
-            "mcp_servers": [],
-        }
-        output, _tokens = await run_agent(
-            delegate_job_data, settings, server_url, worker_key
-        )
-        return f"[{agent_name}] {output}"
-
-    elif tool_name == "delegate_parallel":
-        import asyncio as _aio
-        import json as _json
-
-        delegations = tool_input.get("delegations", [])
-        if not delegations:
-            return "No delegations provided."
-
-        async def _run_one(d: dict) -> dict:
-            name = d["agent_name"]
-            task = d["task"]
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(
-                    f"{server_url}/agents/{name}", headers=headers, timeout=10,
-                )
-                if resp.status_code != 200:
-                    return {"agent": name, "result": f"Agent '{name}' not found."}
-                agent_def = resp.json()
-
-            delegate_job_data = {
-                "job": {
-                    "agent_name": name, "input": task,
-                    "conversation_id": job.get("conversation_id"),
-                },
-                "agent": {
-                    "name": agent_def["name"],
-                    "description": agent_def.get("description", ""),
-                    "prompt_template": agent_def.get("prompt_template", ""),
-                    "tools": list(agent_def.get("tools") or []),
-                    "knowledge_areas": list(agent_def.get("knowledge_areas") or []),
-                    "max_iterations": agent_def.get("max_iterations"),
-                },
-                "messages": [],
-                "knowledge": [],
-                "mcp_servers": [],
-            }
-            output, _tokens = await run_agent(
-                delegate_job_data, settings, server_url, worker_key
-            )
-            return {"agent": name, "result": output}
-
-        results = await _aio.gather(*[_run_one(d) for d in delegations])
-        return _json.dumps(list(results), indent=2)
-
-    elif tool_name == "knowledge_search":
-        async with httpx.AsyncClient() as client:
-            params = {
-                k: v
-                for k, v in {
-                    "category": tool_input.get("category")
-                }.items()
-                if v
-            }
-            resp = await client.get(
-                f"{server_url}/agents/{job['agent_name']}/knowledge",
-                params=params,
-                timeout=10,
-            )
-            return resp.text
-
-    elif tool_name == "knowledge_write":
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"{server_url}/agents/{job['agent_name']}/knowledge",
-                headers=headers,
-                json={
-                    "category": tool_input["category"],
-                    "title": tool_input["title"],
-                    "content": tool_input["content"],
-                    "tags": tool_input.get("tags", []),
-                },
-                timeout=10,
-            )
-            return resp.text
-
-    elif tool_name == "knowledge_archive":
-        async with httpx.AsyncClient() as client:
-            kid = tool_input["knowledge_id"]
-            resp = await client.post(
-                f"{server_url}/agents/{job['agent_name']}"
-                f"/knowledge/{kid}/archive",
-                headers=headers,
-                timeout=10,
-            )
-            return resp.text
-
-    elif tool_name == "upsert_agent":
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"{server_url}/agents",
-                json={
-                    "name": tool_input["name"],
-                    "description": tool_input["description"],
-                    "prompt_template": tool_input.get("prompt_template", ""),
-                    "tools": tool_input.get("tools", []),
-                    "mcp_servers": tool_input.get("mcp_servers", []),
-                    "knowledge_areas": tool_input.get("knowledge_areas", []),
-                },
-                timeout=10,
-            )
-            return resp.text
-
-    elif tool_name == "list_agents":
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{server_url}/agents",
-                timeout=10,
-            )
-            return resp.text
-
-    elif tool_name == "delete_agent":
-        async with httpx.AsyncClient() as client:
-            resp = await client.delete(
-                f"{server_url}/agents/{tool_input['name']}",
-                timeout=10,
-            )
-            return resp.text
-
-    elif tool_name == "schedule":
-        payload = {
-            "agent_name": tool_input["agent_name"],
-            "input": tool_input["input"],
-            "conversation_id": job.get("conversation_id"),
-            "user_id": job.get("user_id"),
-            "created_by_job_id": job.get("id"),
-            "replace": tool_input.get("replace", False),
-        }
-        if tool_input.get("cron"):
-            payload["cron"] = tool_input["cron"]
-        elif tool_input.get("delay_seconds"):
-            payload["delay_seconds"] = tool_input["delay_seconds"]
-        else:
-            payload["delay_seconds"] = 60  # default 1 minute
-
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"{server_url}/scheduled-jobs",
-                headers=headers,
-                json=payload,
-                timeout=10,
-            )
-            if resp.status_code >= 400:
-                return f"Schedule failed: {resp.text}"
-            data = resp.json()
-            if tool_input.get("cron"):
-                kind = f"cron={tool_input['cron']}"
-            else:
-                kind = f"in {payload.get('delay_seconds')}s"
-            return f"Scheduled {tool_input['agent_name']} ({kind}), id={data['id']}"
-
-    elif tool_name == "execute_code":
-        try:
-            from e2b_code_interpreter import AsyncSandbox
-        except ImportError:
-            return "e2b-code-interpreter package not installed. Run: pip install e2b-code-interpreter"
-
-        code = tool_input["code"]
-        packages = tool_input.get("packages") or []
-
-        try:
-            sandbox = await AsyncSandbox.create(timeout=120)
-            try:
-                if packages:
-                    pip_cmd = f"pip install {' '.join(packages)}"
-                    await sandbox.commands.run(pip_cmd, timeout=60)
-
-                execution = await sandbox.run_code(code, timeout=90)
-
-                parts = []
-                if execution.logs.stdout:
-                    parts.append("stdout:\n" + "\n".join(execution.logs.stdout))
-                if execution.logs.stderr:
-                    parts.append("stderr:\n" + "\n".join(execution.logs.stderr))
-                if execution.error:
-                    parts.append(f"error: {execution.error.name}: {execution.error.value}")
-                if execution.results:
-                    for r in execution.results:
-                        if hasattr(r, "text") and r.text:
-                            parts.append(f"result: {r.text}")
-
-                return "\n".join(parts) if parts else "(no output)"
-            finally:
-                await sandbox.kill()
-        except Exception as e:
-            return f"Code execution failed: {e}"
-
-    elif tool_name == "create_attachment":
-        import base64
-
-        content = tool_input["content"]
-        content_b64 = base64.b64encode(content.encode("utf-8")).decode("ascii")
-        ct = tool_input.get("content_type", "text/plain")
-        filename = tool_input["filename"]
-        size_bytes = len(content.encode("utf-8"))
-        job_id = job.get("id", "unknown")
-
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"{server_url}/jobs/{job_id}/attachments",
-                headers=headers,
-                json={
-                    "filename": filename,
-                    "content_type": ct,
-                    "data": content_b64,
-                    "size_bytes": size_bytes,
-                },
-                timeout=30,
-            )
-            if resp.status_code >= 400:
-                return f"Failed to create attachment: {resp.text}"
-            att_data = resp.json()
-            return f"Created attachment: {filename} (id={att_data['id']})"
-
-    elif tool_name == "progress_update":
-        job_id = job.get("id", "unknown")
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"{server_url}/jobs/{job_id}/progress",
-                headers=headers,
-                json={
-                    "status": tool_input["status"],
-                    "data": tool_input.get("data"),
-                    "agent_name": job.get("agent_name"),
-                },
-                timeout=10,
-            )
-            return f"Progress published: {tool_input['status']}"
-
-    elif tool_name == "evaluate_run":
-        eval_job_id = tool_input["job_id"]
-        criteria = tool_input.get("criteria", "")
-
-        # Fetch job + conversation messages
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{server_url}/jobs/{eval_job_id}/evaluation-data",
-                headers=headers,
-                timeout=30,
-            )
-            if resp.status_code != 200:
-                return json.dumps({"error": f"Job {eval_job_id} not found"})
-            eval_data = resp.json()
-
-        eval_job = eval_data["job"]
-        eval_messages = eval_data["messages"]
-
-        if eval_job.get("status") != "completed":
-            return json.dumps({
-                "error": f"Job status is '{eval_job.get('status')}', not 'completed'"
-            })
-
-        # Build conversation transcript
-        conversation_text = "\n".join(
-            f"[{m['role']}] {m['content']}" for m in eval_messages
-        )
-
-        eval_system = (
-            "You are an expert evaluator of AI agent runs. "
-            "Analyze the agent's performance and return ONLY valid JSON:\n"
-            "{\n"
-            '  "score": <integer 1-5, 1=poor 3=adequate 5=excellent>,\n'
-            '  "summary": "<one paragraph assessment>",\n'
-            '  "strengths": ["<strength>", ...],\n'
-            '  "weaknesses": ["<weakness>", ...],\n'
-            '  "suggestions": ["<actionable improvement>", ...]\n'
-            "}"
-        )
-
-        criteria_section = f"\n\nEvaluation criteria: {criteria}" if criteria else ""
-
-        eval_user_msg = (
-            f"Evaluate this agent run:\n\n"
-            f"Agent: {eval_job.get('agent_name', 'unknown')}\n"
-            f"Task input: {eval_job.get('input', '')}\n"
-            f"Final output: {eval_job.get('output', '')}\n"
-            f"Tokens used: {eval_job.get('tokens_used', 'unknown')}\n\n"
-            f"Conversation ({len(eval_messages)} messages):\n"
-            f"{conversation_text}"
-            f"{criteria_section}"
-        )
-
-        # Call Claude as judge
-        if not settings or not settings.anthropic_api_key:
-            return json.dumps({"error": "No Anthropic API key configured"})
-
-        ai_client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-        response = await ai_client.messages.create(
-            model=settings.anthropic_model,
-            max_tokens=1024,
-            system=eval_system,
-            messages=[{"role": "user", "content": eval_user_msg}],
-        )
-
-        result_text = response.content[0].text
-        try:
-            evaluation = json.loads(result_text)
-        except json.JSONDecodeError:
-            evaluation = {"raw": result_text, "parse_error": True}
-
-        evaluation["job_id"] = eval_job_id
-        evaluation["agent_name"] = eval_job.get("agent_name")
-        evaluation["tokens_used_by_evaluation"] = (
-            response.usage.input_tokens + response.usage.output_tokens
-        )
-
-        return json.dumps(evaluation, indent=2)
-
-    return json.dumps({"error": f"Unknown built-in: {tool_name}"})
+    ctx = ToolContext(
+        server_url=server_url,
+        headers={"x-worker-key": worker_key},
+        job=job,
+        settings=settings,
+    )
+    return await handler(tool_input, ctx)
 
 
 async def run_agent(
@@ -697,7 +781,9 @@ async def run_agent(
         "devbot_url": settings.devbot_url,
         "pilot_url": settings.pilot_url,
         "sub_agents": sub_agents,
-        "agents": sub_agents,  # backwards compat with PA template that uses {% for agent in agents %}
+        # backwards compat with PA template that uses
+        # {% for agent in agents %}
+        "agents": sub_agents,
     }
 
     system_prompt = render_prompt(agent["prompt_template"], prompt_context)
@@ -718,7 +804,9 @@ async def run_agent(
         if attachments:
             content_blocks = []
             if msg["content"]:
-                content_blocks.append({"type": "text", "text": msg["content"]})
+                content_blocks.append(
+                    {"type": "text", "text": msg["content"]}
+                )
             for att in attachments:
                 ct = att["content_type"]
                 if ct.startswith("image/"):
@@ -742,11 +830,18 @@ async def run_agent(
                 else:
                     content_blocks.append({
                         "type": "text",
-                        "text": f"[Attached file: {att['filename']} ({ct}, {att['size_bytes']} bytes)]",
+                        "text": (
+                            f"[Attached file: {att['filename']}"
+                            f" ({ct}, {att['size_bytes']} bytes)]"
+                        ),
                     })
-            api_messages.append({"role": msg["role"], "content": content_blocks})
+            api_messages.append(
+                {"role": msg["role"], "content": content_blocks}
+            )
         else:
-            api_messages.append({"role": msg["role"], "content": msg["content"]})
+            api_messages.append(
+                {"role": msg["role"], "content": msg["content"]}
+            )
     if not conversation_messages:
         api_messages.append({"role": "user", "content": job["input"]})
 
