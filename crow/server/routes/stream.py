@@ -41,7 +41,9 @@ async def stream_conversation(conversation_id: str, request: Request):
                     event = await asyncio.wait_for(queue.get(), timeout=30.0)
                     if event.type == MESSAGE_CHUNK:
                         data = json.dumps({
-                            "text": event.data["text"],
+                            "type": event.data.get("type", "text"),
+                            "text": event.data.get("text"),
+                            "tool_name": event.data.get("tool_name"),
                             "agent_name": event.data.get("agent_name"),
                             "job_id": event.data.get("job_id"),
                         })

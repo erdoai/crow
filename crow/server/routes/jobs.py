@@ -162,7 +162,9 @@ async def claim_next_job(request: Request, x_worker_key: str = Header()):
 
 
 class ChunkPayload(BaseModel):
-    text: str
+    type: str = "text"  # "text" or "tool_call"
+    text: str | None = None
+    tool_name: str | None = None
     agent_name: str | None = None
 
 
@@ -188,7 +190,9 @@ async def job_chunk(
         data={
             "conversation_id": job["conversation_id"],
             "job_id": job_id,
+            "type": payload.type,
             "text": payload.text,
+            "tool_name": payload.tool_name,
             "agent_name": payload.agent_name,
         },
     ))

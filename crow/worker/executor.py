@@ -1007,6 +1007,21 @@ async def run_agent(
                     b for b in collected_content if b["type"] == "tool_use"
                 ]
 
+                # Notify frontend of tool calls via chunk endpoint
+                if stream_chunks:
+                    async with httpx.AsyncClient() as hc:
+                        for tb in tool_blocks:
+                            await hc.post(
+                                chunk_url,
+                                headers=chunk_headers,
+                                json={
+                                    "type": "tool_call",
+                                    "tool_name": tb["name"],
+                                    "agent_name": job.get("agent_name"),
+                                },
+                                timeout=5,
+                            )
+
                 async def _exec_tool(block):
                     tool_name = block["name"]
                     tool_input = block["input"]

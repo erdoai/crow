@@ -36,14 +36,22 @@ export function useCrowRuntime(
 
     source.addEventListener('chunk', (e) => {
       const data = JSON.parse(e.data) as {
-        text: string
+        type: string
+        text: string | null
+        tool_name: string | null
         agent_name: string | null
         job_id: string
       }
       if (!streamingId) {
         streamingId = `streaming-${data.job_id}`
       }
-      streamedText += data.text
+
+      if (data.type === 'tool_call') {
+        streamedText += `\n\n🔧 *${data.tool_name}*\n\n`
+      } else if (data.text) {
+        streamedText += data.text
+      }
+
       const id = streamingId
       const content = streamedText
       const agentName = data.agent_name
