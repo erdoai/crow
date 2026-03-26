@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:check": "tsc -b && vite build --outDir .dist-check && rm -rf .dist-check",
     "lint": "eslint .",
     "preview": "vite preview"
   },

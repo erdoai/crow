@@ -315,8 +315,7 @@ pytest                          # test
 **MANDATORY — run these before EVERY commit that touches Python or TypeScript. No exceptions. Do not skip. The Docker build WILL fail if you don't.**
 
 1. **Python:** `ruff check .` from repo root
-2. **TypeScript:** `cd web && npx tsc --noEmit` — the tsconfig has `noUnusedLocals` and `noUnusedParameters` enabled, so unused imports/variables are build errors. The Docker build runs `npm run build` (`tsc -b && vite build`) and will fail on these.
-3. **Vite build:** `cd web && npx vite build` to catch any bundling issues
+2. **Frontend:** `cd web && npm run build:check` — runs the full build (tsc + vite) to a throwaway dir. This catches everything the Docker build catches: unused imports, missing interface fields, bundling errors. There is NO excuse for skipping this.
 
 **Common mistakes that break the Docker build:**
 - Adding a field to a TypeScript interface but not setting it everywhere the type is constructed (e.g. adding `mode` to `Job` but missing it in the reducer's `newJob` object)
