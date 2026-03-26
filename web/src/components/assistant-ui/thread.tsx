@@ -3,6 +3,7 @@ import {
   ComposerPrimitive,
   MessagePrimitive,
   useMessage,
+  useThreadRuntime,
 } from '@assistant-ui/react'
 import { MarkdownTextPrimitive } from '@assistant-ui/react-markdown'
 import { ArrowUp, ArrowDown, Cpu } from 'lucide-react'
@@ -23,6 +24,7 @@ export function Thread() {
               AssistantMessage,
             }}
           />
+          <TypingIndicator />
         </div>
       </ThreadPrimitive.Viewport>
 
@@ -56,7 +58,7 @@ function AssistantMessage() {
   return (
     <MessagePrimitive.Root className="flex flex-col max-w-[70%] self-start items-start">
       <AgentLabel />
-      <div className="px-4 py-2.5 rounded-2xl rounded-bl-sm text-sm leading-relaxed bg-card border border-border prose prose-sm prose-neutral max-w-none">
+      <div className="px-4 py-2.5 rounded-2xl rounded-bl-sm text-sm leading-relaxed bg-card border border-border prose prose-sm prose-neutral dark:prose-invert max-w-none">
         <MessagePrimitive.Content
           components={{
             Text: AssistantMessageText,
@@ -104,6 +106,29 @@ function Composer() {
         </Button>
       </ComposerPrimitive.Send>
     </ComposerPrimitive.Root>
+  )
+}
+
+function TypingIndicator() {
+  const runtime = useThreadRuntime()
+  const isRunning = runtime.getState().isRunning
+
+  if (!isRunning) return null
+
+  return (
+    <div className="flex flex-col max-w-[70%] self-start items-start">
+      <div className="flex items-center gap-1 text-xs text-muted-foreground mb-0.5 pl-3">
+        <Cpu className="h-3 w-3" />
+        thinking...
+      </div>
+      <div className="px-4 py-3 rounded-2xl rounded-bl-sm bg-card border border-border">
+        <div className="flex gap-1">
+          <span className="w-2 h-2 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:0ms]" />
+          <span className="w-2 h-2 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:150ms]" />
+          <span className="w-2 h-2 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:300ms]" />
+        </div>
+      </div>
+    </div>
   )
 }
 
