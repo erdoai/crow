@@ -160,4 +160,7 @@ body {
   html {
     @apply font-sans;
   }
+  .prose a {
+    @apply text-primary underline underline-offset-2 hover:opacity-80;
+  }
 }
