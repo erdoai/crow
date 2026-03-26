@@ -1051,3 +1051,18 @@ class Database:
         )
         return [dict(r) for r in rows]
 
+    # -- Zombie Job Reaping --
+
+    async def reap_zombie_jobs(self, cutoff) -> list[dict]:
+        """Mark running jobs started before cutoff as failed. Returns reaped."""
+        rows = await self._pool.fetch(
+            """UPDATE jobs SET status = 'failed',
+                  error = 'Reaped: no worker heartbeat',
+                  completed_at = now()
+               WHERE status = 'running'
+                 AND started_at < $1
+               RETURNING id, agent_name, started_at, conversation_id""",
+            cutoff,
+        )
+        return [dict(r) for r in rows]
+

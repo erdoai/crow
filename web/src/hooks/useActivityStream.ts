@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useReducer } from 'react'
 import { fetchJSON, type Job, type JobEvent, type ScheduledJob, type Worker } from '../api'
+import { useWebSocket } from './useWebSocket'
 
 const MAX_EVENTS_PER_JOB = 100
 
@@ -151,61 +152,57 @@ const INITIAL: State = { jobs: [], scheduledJobs: [], workers: [] }
 
 export function useActivityStream(enabled: boolean) {
   const [state, dispatch] = useReducer(reducer, INITIAL)
-  const sseRef = useRef<EventSource | null>(null)
 
   // Initial data load
   useEffect(() => {
     if (!enabled) return
-    fetchJSON<Job[]>('/jobs?limit=50').then(jobs => dispatch({ type: 'INIT_JOBS', jobs }))
-    fetchJSON<ScheduledJob[]>('/scheduled-jobs').then(scheduledJobs => dispatch({ type: 'INIT_SCHEDULED', scheduledJobs }))
-    fetchJSON<Worker[]>('/workers').then(workers => dispatch({ type: 'INIT_WORKERS', workers }))
+    fetchJSON<Job[]>('/jobs?limit=50').then(jobs =>
+      dispatch({ type: 'INIT_JOBS', jobs }),
+    )
+    fetchJSON<ScheduledJob[]>('/scheduled-jobs').then(scheduledJobs =>
+      dispatch({ type: 'INIT_SCHEDULED', scheduledJobs }),
+    )
+    fetchJSON<Worker[]>('/workers').then(workers =>
+      dispatch({ type: 'INIT_WORKERS', workers }),
+    )
   }, [enabled])
 
-  // SSE for real-time updates
-  useEffect(() => {
-    if (!enabled) {
-      sseRef.current?.close()
-      sseRef.current = null
-      return
-    }
-
-    const source = new EventSource('/api/state/stream')
-    sseRef.current = source
-
-    source.addEventListener('job.started', (e) => {
-      const { data } = JSON.parse(e.data)
-      dispatch({ type: 'JOB_STARTED', data })
-    })
-    source.addEventListener('job.completed', (e) => {
-      const { data } = JSON.parse(e.data)
-      dispatch({ type: 'JOB_COMPLETED', data })
-    })
-    source.addEventListener('job.failed', (e) => {
-      const { data } = JSON.parse(e.data)
-      dispatch({ type: 'JOB_FAILED', data })
-    })
-    source.addEventListener('job.progress', (e) => {
-      const { data } = JSON.parse(e.data)
-      dispatch({ type: 'JOB_PROGRESS', data })
-    })
-    source.addEventListener('message.chunk', (e) => {
-      const { data } = JSON.parse(e.data)
-      if (data.job_id) {
-        dispatch({ type: 'MESSAGE_CHUNK', data })
+  // WebSocket for real-time updates (replaces SSE)
+  const onEvent = useCallback(
+    (event: { type: string; data: Record<string, unknown> }) => {
+      const { data } = event
+      switch (event.type) {
+        case 'job.started':
+          dispatch({ type: 'JOB_STARTED', data: data as Action & { type: 'JOB_STARTED' } extends { data: infer D } ? D : never })
+          break
+        case 'job.completed':
+          dispatch({ type: 'JOB_COMPLETED', data: data as { job_id: string } })
+          break
+        case 'job.failed':
+          dispatch({ type: 'JOB_FAILED', data: data as { job_id: string; error?: string } })
+          break
+        case 'job.progress':
+          dispatch({ type: 'JOB_PROGRESS', data: data as { job_id: string; status: string } })
+          break
+        case 'message.chunk':
+          if (data.job_id) {
+            dispatch({ type: 'MESSAGE_CHUNK', data: data as { job_id: string; type: string; text?: string; tool_name?: string; agent_name?: string } })
+          }
+          break
       }
-    })
+    },
+    [],
+  )
 
-    return () => {
-      source.close()
-      sseRef.current = null
-    }
-  }, [enabled])
+  useWebSocket({ onEvent, enabled })
 
-  // Refresh workers periodically (no SSE events for heartbeats)
+  // Refresh workers periodically (no events for heartbeats)
   useEffect(() => {
     if (!enabled) return
     const id = setInterval(() => {
-      fetchJSON<Worker[]>('/workers').then(workers => dispatch({ type: 'INIT_WORKERS', workers }))
+      fetchJSON<Worker[]>('/workers').then(workers =>
+        dispatch({ type: 'INIT_WORKERS', workers }),
+      )
     }, 30_000)
     return () => clearInterval(id)
   }, [enabled])

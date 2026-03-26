@@ -13,8 +13,12 @@ function Elapsed({ since }: { since: string }) {
   }, [])
   const s = Math.floor((Date.now() - new Date(since).getTime()) / 1000)
   if (s < 60) return <span>{s}s</span>
-  const m = Math.floor(s / 60)
-  return <span>{m}m {s % 60}s</span>
+  if (s < 3600) return <span>{Math.floor(s / 60)}m {s % 60}s</span>
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  if (h < 24) return <span>{h}h {m}m</span>
+  const d = Math.floor(h / 24)
+  return <span>{d}d {h % 24}h</span>
 }
 
 const statusIcon: Record<string, React.ReactNode> = {

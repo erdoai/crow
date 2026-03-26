@@ -39,6 +39,9 @@ from crow.server.routes import (
     stream,
     workers,
 )
+from crow.server.websocket import (
+    router as ws_router,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,16 +82,19 @@ async def lifespan(app: FastAPI):
     gateways.append(api_gw)
     app.state.api_gateway = api_gw
 
-    # Scheduler background task
+    # Background tasks
+    from crow.server.reaper import reaper_loop
     from crow.server.scheduler import scheduler_loop
 
     scheduler_task = asyncio.create_task(scheduler_loop(db, bus))
+    reaper_task = asyncio.create_task(reaper_loop(db, bus))
 
     logger.info("crow server started on %s:%d", settings.host, settings.port)
 
     yield
 
     scheduler_task.cancel()
+    reaper_task.cancel()
     for gw in gateways:
         await gw.stop()
     await db.close()
@@ -119,6 +125,7 @@ def create_app() -> FastAPI:
     app.include_router(scheduled_jobs.router)
     app.include_router(attachments.router)
     app.include_router(push.router)
+    app.include_router(ws_router)
 
     # Auth + dashboard JSON APIs
     app.include_router(auth.api_router)  # /api/me
