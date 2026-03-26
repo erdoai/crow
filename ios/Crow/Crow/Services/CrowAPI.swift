@@ -93,9 +93,43 @@ final class CrowAPI {
         let _: [String: String] = try await post("/auth/send-code", body: body)
     }
 
-    func verify(email: String, code: String) async throws -> AuthVerifyResponse {
-        let body = AuthVerifyRequest(email: email, code: code)
-        return try await post("/auth/verify", body: body)
+    func verify(email: String, code: String) async throws -> (AuthVerifyResponse, String?) {
+        var request = try makeRequest(path: "/auth/verify", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(AuthVerifyRequest(email: email, code: code))
+
+        // Don't let URLSession swallow the Set-Cookie header
+        request.httpShouldHandleCookies = false
+
+        let (data, response) = try await session.data(for: request)
+        try checkResponse(response)
+        let decoded = try decoder.decode(AuthVerifyResponse.self, from: data)
+
+        // Extract crow_session JWT from Set-Cookie
+        var sessionToken: String?
+        if let http = response as? HTTPURLResponse,
+           let setCookie = http.value(forHTTPHeaderField: "Set-Cookie") {
+            for part in setCookie.components(separatedBy: ",") {
+                let trimmed = part.trimmingCharacters(in: .whitespaces)
+                if trimmed.hasPrefix("crow_session=") {
+                    sessionToken = trimmed
+                        .components(separatedBy: ";").first?
+                        .replacingOccurrences(of: "crow_session=", with: "")
+                }
+            }
+        }
+        return (decoded, sessionToken)
+    }
+
+    /// Validate an API key by calling /api/me
+    func validateApiKey(_ key: String) async throws {
+        guard let base = server.baseURL else { throw CrowAPIError.invalidURL }
+        let url = base.appendingPathComponent("/api/me")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        let (_, response) = try await session.data(for: request)
+        try checkResponse(response)
     }
 
     // MARK: - Jobs
@@ -174,9 +208,15 @@ final class CrowAPI {
         let url = base.appendingPathComponent(path)
         var request = URLRequest(url: url)
         request.httpMethod = method
-        if let token = server.sessionToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            request.setValue(token, forHTTPHeaderField: "Cookie")
+        if let token = server.authToken {
+            switch server.authMethod {
+            case .apiKey:
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            case .sessionToken:
+                request.setValue("crow_session=\(token)", forHTTPHeaderField: "Cookie")
+            case .none:
+                break
+            }
         }
         return request
     }

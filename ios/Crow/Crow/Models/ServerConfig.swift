@@ -1,13 +1,20 @@
 import Foundation
 
+enum AuthMethod: String, Codable {
+    case none
+    case sessionToken
+    case apiKey
+}
+
 struct ServerConfig: Codable, Identifiable, Hashable {
     var id: UUID = UUID()
     var name: String
     var url: String
-    var sessionToken: String?
+    var authMethod: AuthMethod = .none
+    var authToken: String?
 
     var baseURL: URL? { URL(string: url) }
-    var isAuthenticated: Bool { sessionToken != nil }
+    var isAuthenticated: Bool { authToken != nil && authMethod != .none }
 }
 
 @MainActor

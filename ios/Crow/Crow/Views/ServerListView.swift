@@ -59,14 +59,18 @@ struct AddServerSheet: View {
     @EnvironmentObject var store: ServerStore
     @Environment(\.dismiss) private var dismiss
 
+    private enum AuthTab: String { case email, apiKey }
+
     @State private var name = ""
     @State private var url = ""
     @State private var checking = false
     @State private var error: String?
-    @State private var needsAuth = false
+    @State private var needsAuth = true
+    @State private var authTab: AuthTab = .apiKey
     @State private var email = ""
     @State private var code = ""
     @State private var codeSent = false
+    @State private var apiKey = ""
 
     var body: some View {
         NavigationStack {
@@ -81,22 +85,41 @@ struct AddServerSheet: View {
                         .autocorrectionDisabled()
                 }
 
+                Section {
+                    Toggle("Requires authentication", isOn: $needsAuth)
+                }
+
                 if needsAuth {
                     Section("Authentication") {
-                        TextField("Email", text: $email)
-                            .textContentType(.emailAddress)
-                            .keyboardType(.emailAddress)
-                            .textInputAutocapitalization(.never)
-
-                        if codeSent {
-                            TextField("Verification code", text: $code)
-                                .keyboardType(.numberPad)
+                        Picker("Method", selection: $authTab) {
+                            Text("API Key").tag(AuthTab.apiKey)
+                            Text("Email Code").tag(AuthTab.email)
                         }
+                        .pickerStyle(.segmented)
 
-                        Button(codeSent ? "Resend code" : "Send code") {
-                            Task { await sendCode() }
+                        if authTab == .apiKey {
+                            SecureField("API Key", text: $apiKey)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                            Text("Paste a personal API key from your Crow dashboard settings.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            TextField("Email", text: $email)
+                                .textContentType(.emailAddress)
+                                .keyboardType(.emailAddress)
+                                .textInputAutocapitalization(.never)
+
+                            if codeSent {
+                                TextField("Verification code", text: $code)
+                                    .keyboardType(.numberPad)
+                            }
+
+                            Button(codeSent ? "Resend code" : "Send code") {
+                                Task { await sendCode() }
+                            }
+                            .disabled(email.isEmpty)
                         }
-                        .disabled(email.isEmpty)
                     }
                 }
 
@@ -114,13 +137,18 @@ struct AddServerSheet: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(needsAuth && codeSent ? "Verify & Add" : "Add") {
+                    Button(confirmButtonTitle) {
                         Task { await addServer() }
                     }
                     .disabled(name.isEmpty || url.isEmpty || checking)
                 }
             }
         }
+    }
+
+    private var confirmButtonTitle: String {
+        guard needsAuth else { return "Add" }
+        return authTab == .apiKey ? "Validate & Add" : (codeSent ? "Verify & Add" : "Add")
     }
 
     private func addServer() async {
@@ -139,19 +167,34 @@ struct AddServerSheet: View {
             return
         }
 
-        // If auth is needed and we have a code, verify
-        if needsAuth && codeSent && !code.isEmpty {
-            do {
-                let result = try await api.verify(email: email, code: code)
-                if result.status == "ok" {
-                    // In a full implementation we'd extract the session cookie
-                    // For now, store a marker that auth succeeded
-                    config.sessionToken = "authenticated"
+        // Handle auth
+        if needsAuth {
+            if authTab == .apiKey && !apiKey.isEmpty {
+                do {
+                    try await api.validateApiKey(apiKey)
+                    config.authMethod = .apiKey
+                    config.authToken = apiKey
+                } catch {
+                    self.error = "API key validation failed: \(error.localizedDescription)"
+                    checking = false
+                    return
                 }
-            } catch {
-                self.error = "Verification failed: \(error.localizedDescription)"
-                checking = false
-                return
+            } else if authTab == .email && codeSent && !code.isEmpty {
+                do {
+                    let (result, sessionToken) = try await api.verify(email: email, code: code)
+                    if result.status == "ok", let token = sessionToken {
+                        config.authMethod = .sessionToken
+                        config.authToken = token
+                    } else if result.status == "ok" {
+                        self.error = "Verification succeeded but no session token received"
+                        checking = false
+                        return
+                    }
+                } catch {
+                    self.error = "Verification failed: \(error.localizedDescription)"
+                    checking = false
+                    return
+                }
             }
         }
 

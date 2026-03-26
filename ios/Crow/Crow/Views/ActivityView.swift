@@ -132,7 +132,7 @@ struct ActivityView: View {
                 }
             }
         }
-        client.connect(url: url, sessionToken: api.server.sessionToken)
+        client.connect(url: url, server: api.server)
         sseClient = client
     }
 
@@ -261,9 +261,13 @@ struct JobRow: View {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         guard let date = formatter.date(from: started) else { return "" }
-        let seconds = Int(Date().timeIntervalSince(date))
-        if seconds < 60 { return "\(seconds)s" }
-        return "\(seconds / 60)m \(seconds % 60)s"
+        let s = Int(Date().timeIntervalSince(date))
+        if s < 60 { return "\(s)s" }
+        if s < 3600 { return "\(s / 60)m \(s % 60)s" }
+        let h = s / 3600
+        let m = (s % 3600) / 60
+        if h < 24 { return "\(h)h \(m)m" }
+        return "\(h / 24)d \(h % 24)h"
     }
 }
 

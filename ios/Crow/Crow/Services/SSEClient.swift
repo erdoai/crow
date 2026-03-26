@@ -18,13 +18,20 @@ final class SSEClient: NSObject, URLSessionDataDelegate {
         super.init()
     }
 
-    func connect(url: URL, sessionToken: String? = nil) {
+    func connect(url: URL, server: ServerConfig? = nil) {
         disconnect()
         session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
         var request = URLRequest(url: url)
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-        if let token = sessionToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let server = server, let token = server.authToken {
+            switch server.authMethod {
+            case .apiKey:
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            case .sessionToken:
+                request.setValue("crow_session=\(token)", forHTTPHeaderField: "Cookie")
+            case .none:
+                break
+            }
         }
         task = session?.dataTask(with: request)
         task?.resume()

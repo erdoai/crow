@@ -188,7 +188,7 @@ struct ChatView: View {
                 break
             }
         }
-        client.connect(url: url, sessionToken: api.server.sessionToken)
+        client.connect(url: url, server: api.server)
         sseClient = client
     }
 }
