@@ -47,7 +47,13 @@ export function useCrowRuntime(
       }
 
       if (data.type === 'tool_call') {
-        streamedText += `\n\n🔧 *${data.tool_name}*\n\n`
+        streamedText += `\n\n> 🔧 **${data.tool_name}** ...\n\n`
+      } else if (data.type === 'tool_result') {
+        // Replace the "..." with done
+        streamedText = streamedText.replace(
+          `> 🔧 **${data.tool_name}** ...`,
+          `> 🔧 **${data.tool_name}** ✓`,
+        )
       } else if (data.text) {
         streamedText += data.text
       }
