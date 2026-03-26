@@ -261,7 +261,13 @@ async def job_progress(
     ))
     await bus.publish(Event(
         type=JOB_PROGRESS,
-        data={"job_id": job_id, "status": payload.status, "data": payload.data},
+        data={
+            "job_id": job_id,
+            "conversation_id": job.get("conversation_id") if job else None,
+            "agent_name": payload.agent_name or (job["agent_name"] if job else "unknown"),
+            "status": payload.status,
+            "data": payload.data,
+        },
     ))
     return {"status": "ok"}
 

@@ -83,6 +83,39 @@ export function useCrowRuntime(
       })
     })
 
+    source.addEventListener('progress', (e) => {
+      const data = JSON.parse(e.data) as {
+        status: string
+        agent_name: string | null
+        job_id: string
+      }
+      // Show progress as a streaming assistant message
+      const id = streamingId || `streaming-${data.job_id}`
+      if (!streamingId) streamingId = id
+
+      // Add or update a progress text part
+      const progressText = `*${data.agent_name || 'agent'}:* ${data.status}`
+      const last = streamedParts[streamedParts.length - 1]
+      if (last?.type === 'progress') {
+        last.text = progressText
+      } else {
+        streamedParts.push({ type: 'progress', text: progressText })
+      }
+
+      const content = JSON.stringify(streamedParts)
+      const agentName = data.agent_name
+      setMessages((prev) => {
+        const existing = prev.findIndex((m) => m.id === id)
+        const msg: Message = { id, role: 'assistant', content, agent_name: agentName }
+        if (existing >= 0) {
+          const next = [...prev]
+          next[existing] = msg
+          return next
+        }
+        return [...prev, msg]
+      })
+    })
+
     source.addEventListener('message', (e) => {
       const data = JSON.parse(e.data) as {
         text: string
