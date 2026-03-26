@@ -1180,7 +1180,7 @@ async def run_agent(
                     content_parts.append({
                         "type": "tool_result",
                         "name": tb["name"],
-                        "result": (tr["content"] or "")[:500],
+                        "result": tr["content"] or "",
                     })
 
                     # Stream tool call + result to frontend
@@ -1192,7 +1192,7 @@ async def run_agent(
                             }, timeout=5)
                             await hc.post(chunk_url, headers=chunk_headers, json={
                                 "type": "tool_result", "tool_name": tb["name"],
-                                "text": (tr["content"] or "")[:200],
+                                "text": tr["content"] or "",
                                 "agent_name": job.get("agent_name"),
                             }, timeout=5)
 
