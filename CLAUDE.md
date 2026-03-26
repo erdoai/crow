@@ -300,8 +300,18 @@ pip install -e ".[dev]"         # install with dev deps
 crow serve                      # start server on :8100
 crow worker                     # start worker in another terminal
 ruff check .                    # lint
+cd web && npx tsc --noEmit      # typecheck frontend
+cd web && npx vite build        # build frontend (runs tsc -b + vite)
 pytest                          # test
 ```
+
+### Pre-commit checks
+
+Always run before committing:
+
+1. **Python:** `ruff check .` from repo root
+2. **TypeScript:** `cd web && npx tsc --noEmit` — the tsconfig has `noUnusedLocals` and `noUnusedParameters` enabled, so unused imports/variables are build errors. The Docker build runs `npm run build` (`tsc -b && vite build`) and will fail on these.
+3. **Vite build:** `cd web && npx vite build` to catch any bundling issues
 
 ## Publishing
 
