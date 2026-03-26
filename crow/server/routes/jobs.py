@@ -6,6 +6,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel
 
 from crow.auth.dependencies import get_current_user
+from crow.auth.session import create_job_token
 from crow.events.types import (
     JOB_COMPLETED,
     JOB_FAILED,
@@ -122,6 +123,7 @@ async def claim_next_job(request: Request, x_worker_key: str = Header()):
     if agent_def and agent_def.get("knowledge_areas"):
         knowledge = await db.search_knowledge(
             agent_name=job["agent_name"],
+            user_id=job_user_id,
             limit=20,
         )
 
@@ -176,8 +178,14 @@ async def claim_next_job(request: Request, x_worker_key: str = Header()):
                 if a["name"] != agent_def["name"]
             ]
 
+    # Issue a short-lived job token encoding user_id — workers use this
+    # for user-scoped API calls (knowledge, state) during execution.
+    secret = request.app.state.auth_config.get("session_secret", "")
+    job_token = create_job_token(job["id"], job_user_id, secret)
+
     return {
         "job": {**job, "user_id": job_user_id},
+        "job_token": job_token,
         "agent": {
             "name": agent_def["name"],
             "description": agent_def["description"],

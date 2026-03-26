@@ -397,12 +397,21 @@ class Database:
             )
         return knowledge_id
 
-    async def archive_knowledge(self, knowledge_id: str) -> None:
-        await self._pool.execute(
-            "UPDATE knowledge SET category = 'archive', updated_at = $1 WHERE id = $2",
-            datetime.now(UTC),
-            knowledge_id,
-        )
+    async def archive_knowledge(self, knowledge_id: str, user_id: str | None = None) -> None:
+        if user_id:
+            await self._pool.execute(
+                "UPDATE knowledge SET category = 'archive', updated_at = $1"
+                " WHERE id = $2 AND user_id = $3",
+                datetime.now(UTC),
+                knowledge_id,
+                user_id,
+            )
+        else:
+            await self._pool.execute(
+                "UPDATE knowledge SET category = 'archive', updated_at = $1 WHERE id = $2",
+                datetime.now(UTC),
+                knowledge_id,
+            )
 
     # -- Agent Definitions --
 

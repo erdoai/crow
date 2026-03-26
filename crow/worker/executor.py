@@ -920,9 +920,12 @@ async def execute_builtin(
     if not handler:
         return json.dumps({"error": f"Unknown built-in: {tool_name}"})
 
+    tool_headers = {"x-worker-key": worker_key}
+    if job.get("_job_token"):
+        tool_headers["x-job-token"] = job["_job_token"]
     ctx = ToolContext(
         server_url=server_url,
-        headers={"x-worker-key": worker_key},
+        headers=tool_headers,
         job=job,
         settings=settings,
     )
@@ -940,6 +943,7 @@ async def run_agent(
 ) -> tuple[str, int]:
     """Run an agent job. Returns (output, tokens_used)."""
     job = job_data["job"]
+    job["_job_token"] = job_data.get("job_token")
     agent = job_data["agent"]
     conversation_messages = job_data.get("messages", [])
     knowledge_entries = job_data.get("knowledge", [])

@@ -5,6 +5,7 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from crow.agents.format import agent_to_markdown, markdown_to_agent
+from crow.auth.session import verify_job_token
 
 router = APIRouter()
 
@@ -12,6 +13,22 @@ router = APIRouter()
 def _uid(request: Request) -> str | None:
     """User ID for DB scoping (set by auth middleware). None = instance-level."""
     return getattr(request.state, "user_id", None)
+
+
+def _uid_from_job_token(request: Request) -> str | None:
+    """Extract user_id from a job-scoped JWT (sent by workers).
+
+    Workers pass the job token in the x-job-token header. The token is
+    signed by the server and encodes the user who owns the job.
+    """
+    token = request.headers.get("x-job-token")
+    if not token:
+        return None
+    secret = request.app.state.auth_config.get("session_secret", "")
+    payload = verify_job_token(token, secret)
+    if payload and payload.get("sub"):
+        return payload["sub"]
+    return None
 
 
 # -- CRUD --
@@ -157,11 +174,16 @@ async def revoke_share_link(name: str, request: Request):
 
 @router.get("/agents/{name}/knowledge")
 async def agent_knowledge(
-    name: str, request: Request, category: str | None = None
+    name: str,
+    request: Request,
+    category: str | None = None,
 ):
     """Get PARA knowledge for an agent."""
     db = request.app.state.db
-    entries = await db.search_knowledge(agent_name=name, category=category)
+    uid = _uid(request) or _uid_from_job_token(request)
+    entries = await db.search_knowledge(
+        agent_name=name, category=category, user_id=uid,
+    )
     return entries
 
 
@@ -201,6 +223,7 @@ async def write_knowledge(
         source_ref=entry.source_ref,
         tags=entry.tags,
         embedding=embedding,
+        user_id=_uid(request) or _uid_from_job_token(request),
     )
     return {"id": knowledge_id}
 
@@ -217,6 +240,7 @@ async def archive_knowledge(
     if x_worker_key != settings.worker_api_key:
         raise HTTPException(status_code=401, detail="Invalid worker key")
 
+    uid = _uid(request) or _uid_from_job_token(request)
     db = request.app.state.db
-    await db.archive_knowledge(knowledge_id)
+    await db.archive_knowledge(knowledge_id, user_id=uid)
     return {"status": "archived"}
