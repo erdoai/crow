@@ -210,7 +210,12 @@ tools: [schedule, progress_update]
 
 The agent provides `agent_name` + `input` + either `delay_seconds` (one-shot) or `cron` (recurring, e.g. `*/5 * * * *`). Scheduled jobs are stored in the `scheduled_jobs` table and promoted to pending jobs by a server-side scheduler loop (10s poll interval).
 
-**`progress_update`** — publishes a real-time status update during an agent run. Writes to the state channel under key `progress:{job_id}`, so dashboards can subscribe via SSE (`/api/state/stream?keys=progress:*`).
+**Scheduling guidance for agent prompts:** Scheduling is for periodic check-ins (daily, every few hours), NOT for continuous work. An agent should do as much as it can in a single run (using `max_iterations`), report results, then optionally schedule a follow-up for later (e.g. `delay_seconds: 36000` for 10 hours). Agents should NOT schedule themselves every few minutes — that's what `max_iterations` is for. Example pattern:
+- Run: search for opportunities, browse the web, save findings to knowledge
+- At end of run: schedule a follow-up in 10h or 24h to check for new results
+- Do NOT ask the user "what do you want to focus on?" if background work is running — report findings and say you'll check back later
+
+**`progress_update`** — publishes a real-time status update during an agent run. Writes to the state channel under key `progress:{job_id}`, so dashboards can subscribe via SSE (`/api/state/stream?keys=progress:*`). **Agents should call this frequently** (every few tool calls) so users can see what's happening in real-time. Without progress updates, the UI just shows "starting..." until the run completes.
 
 ### File attachments
 
@@ -465,4 +470,17 @@ Keep agents in a local folder (e.g. `./agents/`) and sync with `crow agents sync
 - iOS app gateway for inbound messages.
 - Web dashboard served from FastAPI (React SPA + Vite). Purple theme. Custom HTML dashboards served alongside via `dashboard.views` in `crow.yml`.
 - State channel (`state` table): per-user key/value store with SSE streaming. External processes push state via REST, dashboards subscribe via SSE. Agent events (message.*, job.*) piped into the same stream.
+- WebSocket (`/ws`): activity stream with catch-up replay. Replaces SSE for the main activity feed. Clients get an ephemeral token via `POST /ws/token`, connect with `last_seq` for replay on reconnect. Server buffers last 500 events per user.
+- Zombie job reaper: background task marks jobs as failed if running >10m with no worker heartbeat.
 - API keys generated from dashboard, bearer token auth for programmatic access.
+
+## Gotchas and common mistakes
+
+Things that have bitten us before — check these when making changes:
+
+- **Auth middleware path matching**: `WORKER_KEY_PREFIXES` in `crow/auth/middleware.py` must NOT have trailing slashes. The middleware uses `startswith()`, so `/scheduled-jobs/` won't match a POST to `/scheduled-jobs`. Always use `/scheduled-jobs` (no trailing slash).
+- **DB migrations and code sync**: When a migration renames or adds a column (e.g. `source` → `source_type`), update ALL queries that reference the old name. `grep` the column name across `crow/db/database.py` before merging.
+- **WebSocket + ASGI middleware**: The auth middleware is raw ASGI (not `BaseHTTPMiddleware`). `BaseHTTPMiddleware` silently drops WebSocket connections — never use it. The current middleware passes `scope["type"] == "websocket"` straight through.
+- **uvicorn + websockets**: The `websockets` pip package is required for uvicorn to handle WebSocket connections. Without it, upgrade requests silently fail with no error message.
+- **TypeScript unused imports**: The tsconfig has `noUnusedLocals` and `noUnusedParameters` enabled. The Docker build runs `tsc -b` and will fail on unused imports/variables. Always run `cd web && npx tsc --noEmit` before committing.
+- **SPA catch-all route**: `/{full_path:path}` in `app.py` catches all GET requests. It explicitly skips `/ws` paths. If you add a new non-API route, make sure it's not swallowed by the catch-all.

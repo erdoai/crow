@@ -71,7 +71,7 @@ class AuthMiddleware:
             return
 
         request = Request(scope, receive, send)
-        path = request.url.path
+        path = request.url.path.rstrip("/") or "/"
 
         # Public routes — no auth needed
         if _is_public(path):
