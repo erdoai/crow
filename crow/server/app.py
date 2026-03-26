@@ -184,9 +184,13 @@ def create_app() -> FastAPI:
         return Response(content=content, media_type=mime_type)
 
     # SPA catch-all — serves index.html for all non-API routes
+    # Excludes /ws (WebSocket) which must be handled by FastAPI
     if SPA_DIR.exists():
         @app.get("/{full_path:path}")
         async def spa_catch_all(request: Request, full_path: str):
+            if full_path == "ws" or full_path.startswith("ws/"):
+                from fastapi import HTTPException
+                raise HTTPException(404)
             file_path = SPA_DIR / full_path
             if full_path and file_path.is_file():
                 return FileResponse(file_path)

@@ -1,15 +1,14 @@
 """Auth middleware — enforces authentication on all routes by default.
 
-Routes must be explicitly allowlisted to be public. Worker routes that
-present a valid x-worker-key are authenticated here in the middleware.
+Uses raw ASGI middleware (not BaseHTTPMiddleware) to properly handle
+both HTTP requests and WebSocket connections.
 """
 
 import logging
-from collections.abc import Callable
 
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse, RedirectResponse, Response
+from starlette.responses import JSONResponse, RedirectResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from crow.auth.dependencies import get_current_user
 
@@ -34,10 +33,10 @@ PUBLIC_PREFIXES: tuple[str, ...] = (
     "/assets/",
     "/shared/",
     "/api/shared/",
+    "/ws",  # WebSocket — auth via ephemeral token in handler
 )
 
 # Path prefixes that accept worker-key authentication.
-# The middleware validates the key centrally; handlers don't need to.
 WORKER_KEY_PREFIXES: tuple[str, ...] = (
     "/workers/",
     "/jobs/",
@@ -52,46 +51,74 @@ def _is_public(path: str) -> bool:
     return any(path.startswith(p) for p in PUBLIC_PREFIXES)
 
 
-class AuthMiddleware(BaseHTTPMiddleware):
-    async def dispatch(
-        self, request: Request, call_next: Callable
-    ) -> Response:
+class AuthMiddleware:
+    """ASGI middleware that enforces auth on HTTP, passes WebSocket through."""
+
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(
+        self, scope: Scope, receive: Receive, send: Send
+    ) -> None:
+        # WebSocket connections: pass through (auth in handler)
+        if scope["type"] == "websocket":
+            await self.app(scope, receive, send)
+            return
+
+        # Non-HTTP (lifespan etc): pass through
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        request = Request(scope, receive, send)
         path = request.url.path
 
         # Public routes — no auth needed
         if _is_public(path):
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
 
-        # Worker-key authentication — validate centrally
+        # Worker-key authentication
         worker_key = request.headers.get("x-worker-key")
-        if worker_key and any(path.startswith(p) for p in WORKER_KEY_PREFIXES):
+        if worker_key and any(
+            path.startswith(p) for p in WORKER_KEY_PREFIXES
+        ):
             expected = request.app.state.settings.worker_api_key
             if worker_key == expected:
-                return await call_next(request)
-            return JSONResponse(
+                await self.app(scope, receive, send)
+                return
+            response = JSONResponse(
                 {"detail": "Invalid worker key"}, status_code=401
             )
+            await response(scope, receive, send)
+            return
 
-        # Everything else requires user auth
+        # User auth
         user = await get_current_user(request)
         if user:
-            # Attach user + scoping ID to request state for downstream handlers
-            request.state.user = user
-            # user_id for DB scoping: None = instance-level (static API key / default user)
-            request.state.user_id = user["id"] if user.get("id") != "default" else None
-            return await call_next(request)
+            scope.setdefault("state", {})
+            scope["state"]["user"] = user
+            scope["state"]["user_id"] = (
+                user["id"] if user.get("id") != "default" else None
+            )
+            await self.app(scope, receive, send)
+            return
 
-        # Not authenticated — decide response format
+        # Not authenticated
         if request.headers.get("authorization", "").startswith("Bearer "):
-            return JSONResponse(
+            response = JSONResponse(
                 {"detail": "Invalid API key"}, status_code=401
             )
+            await response(scope, receive, send)
+            return
 
-        # Unauthenticated HTML requests → redirect to login
         accept = request.headers.get("accept", "")
         if "text/html" in accept:
-            return RedirectResponse(url="/login", status_code=303)
+            response = RedirectResponse(url="/login", status_code=303)
+            await response(scope, receive, send)
+            return
 
-        return JSONResponse(
+        response = JSONResponse(
             {"detail": "Authentication required"}, status_code=401
         )
+        await response(scope, receive, send)
