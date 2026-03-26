@@ -119,17 +119,27 @@ async def claim_next_job(request: Request, x_worker_key: str = Header()):
                     "headers": mcp.get("headers") or {},
                 })
 
-    # Load sub-agents for orchestrator agents (injected into prompt context)
+    # Load agents visible to this agent (injected into prompt context as {{ agents }})
     sub_agents = []
     if agent_def:
+        # Sub-agents of this agent (for orchestrators)
         subs = await db.list_sub_agents(
             agent_def["name"],
             user_id=job_user_id,
         )
-        sub_agents = [
-            {"name": s["name"], "description": s.get("description", "")}
-            for s in subs
-        ]
+        if subs:
+            sub_agents = [
+                {"name": s["name"], "description": s.get("description", "")}
+                for s in subs
+            ]
+        elif "delegate_to_agent" in (agent_def.get("tools") or []):
+            # No sub-agents but has delegate tool — show all top-level peers
+            all_agents = await db.list_agent_defs(user_id=job_user_id)
+            sub_agents = [
+                {"name": a["name"], "description": a.get("description", "")}
+                for a in all_agents
+                if a["name"] != agent_def["name"]
+            ]
 
     return {
         "job": {**job, "user_id": job_user_id},
