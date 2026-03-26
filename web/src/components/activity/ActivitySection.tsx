@@ -2,8 +2,7 @@ import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import type { Job, ScheduledJob, Worker } from '../../api'
-import { Circle, CircleCheck, CircleX, Clock, ChevronDown, ChevronRight, Calendar, Radio } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { ChevronDown, ChevronRight, Calendar, Radio } from 'lucide-react'
 import JobList from './JobList'
 
 interface Props {

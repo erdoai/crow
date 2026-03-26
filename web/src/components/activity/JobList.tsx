@@ -45,7 +45,6 @@ export default function JobList({ jobs }: { jobs: JobWithMeta[] }) {
     <div className="flex flex-col">
       {sorted.map(job => {
         const isExpanded = expandedId === job.id
-        const hasEvents = (job._events?.length ?? 0) > 0
         return (
           <div key={job.id} className="border-b last:border-0">
             <div
