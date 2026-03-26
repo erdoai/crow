@@ -931,57 +931,89 @@ async def run_agent(
             if tools:
                 kwargs["tools"] = tools
 
-            response = await client.messages.create(**kwargs)
-            total_tokens += (
-                response.usage.input_tokens + response.usage.output_tokens
-            )
+            # Use streaming for the Claude API call
+            chunk_headers = {"x-worker-key": worker_key}
+            chunk_url = f"{server_url}/jobs/{job.get('id')}/chunk"
+            stream_chunks = job.get("conversation_id") is not None
 
-            if response.stop_reason == "end_turn":
+            collected_content = []
+            stop_reason = None
+            usage_input = 0
+            usage_output = 0
+
+            async with client.messages.stream(**kwargs) as stream:
+                async with httpx.AsyncClient() as hc:
+                    async for event in stream:
+                        if event.type == "content_block_start":
+                            if event.content_block.type == "text":
+                                collected_content.append({
+                                    "type": "text",
+                                    "text": "",
+                                })
+                            elif event.content_block.type == "tool_use":
+                                collected_content.append({
+                                    "type": "tool_use",
+                                    "id": event.content_block.id,
+                                    "name": event.content_block.name,
+                                    "input": "",
+                                })
+                        elif event.type == "content_block_delta":
+                            if event.delta.type == "text_delta":
+                                collected_content[-1]["text"] += event.delta.text
+                                if stream_chunks:
+                                    await hc.post(
+                                        chunk_url,
+                                        headers=chunk_headers,
+                                        json={
+                                            "text": event.delta.text,
+                                            "agent_name": job.get("agent_name"),
+                                        },
+                                        timeout=5,
+                                    )
+                            elif event.delta.type == "input_json_delta":
+                                collected_content[-1]["input"] += event.delta.partial_json
+                        elif event.type == "message_delta":
+                            stop_reason = event.delta.stop_reason
+                            usage_output += event.usage.output_tokens
+                        elif event.type == "message_start":
+                            usage_input += event.message.usage.input_tokens
+
+            total_tokens += usage_input + usage_output
+
+            # Parse tool_use inputs from accumulated JSON strings
+            for block in collected_content:
+                if block["type"] == "tool_use" and isinstance(block["input"], str):
+                    try:
+                        block["input"] = json.loads(block["input"]) if block["input"] else {}
+                    except json.JSONDecodeError:
+                        block["input"] = {}
+
+            if stop_reason == "end_turn":
                 text_parts = [
-                    b.text for b in response.content if b.type == "text"
+                    b["text"] for b in collected_content if b["type"] == "text"
                 ]
-                output_text = "\n".join(text_parts) or "(no response)"
+                return (
+                    "\n".join(text_parts) or "(no response)",
+                    total_tokens,
+                )
 
-                # Stream the final text response as chunks
-                if job.get("conversation_id"):
-                    chunk_headers = {"x-worker-key": worker_key}
-                    chunk_url = f"{server_url}/jobs/{job.get('id')}/chunk"
-                    async with httpx.AsyncClient() as hc:
-                        # Send in ~100 char chunks for smooth streaming
-                        pos = 0
-                        while pos < len(output_text):
-                            chunk = output_text[pos:pos + 100]
-                            await hc.post(
-                                chunk_url,
-                                headers=chunk_headers,
-                                json={
-                                    "text": chunk,
-                                    "agent_name": job.get("agent_name"),
-                                },
-                                timeout=5,
-                            )
-                            pos += 100
-                            await asyncio.sleep(0.03)
-
-                return output_text, total_tokens
-
-            if response.stop_reason == "tool_use":
+            if stop_reason == "tool_use":
                 api_messages.append({
                     "role": "assistant",
-                    "content": [
-                        b.model_dump() for b in response.content
-                    ],
+                    "content": collected_content,
                 })
 
                 tool_blocks = [
-                    b for b in response.content if b.type == "tool_use"
+                    b for b in collected_content if b["type"] == "tool_use"
                 ]
 
                 async def _exec_tool(block):
-                    if block.name in BUILTIN_TOOLS:
+                    tool_name = block["name"]
+                    tool_input = block["input"]
+                    if tool_name in BUILTIN_TOOLS:
                         result = await execute_builtin(
-                            block.name,
-                            block.input,
+                            tool_name,
+                            tool_input,
                             server_url,
                             worker_key,
                             job,
@@ -990,18 +1022,18 @@ async def run_agent(
                     else:
                         result = None
                         for conn in mcp_connections:
-                            if conn.has_tool(block.name):
+                            if conn.has_tool(tool_name):
                                 result = await conn.call_tool(
-                                    block.name, block.input
+                                    tool_name, tool_input
                                 )
                                 break
                         if result is None:
                             result = json.dumps(
-                                {"error": f"Unknown tool: {block.name}"}
+                                {"error": f"Unknown tool: {tool_name}"}
                             )
                     return {
                         "type": "tool_result",
-                        "tool_use_id": block.id,
+                        "tool_use_id": block["id"],
                         "content": result,
                     }
 
@@ -1014,11 +1046,11 @@ async def run_agent(
                 )
             else:
                 text_parts = [
-                    b.text for b in response.content if b.type == "text"
+                    b["text"] for b in collected_content if b["type"] == "text"
                 ]
                 return (
                     "\n".join(text_parts)
-                    or f"(stopped: {response.stop_reason})"
+                    or f"(stopped: {stop_reason})"
                 ), total_tokens
 
         return "(max iterations reached)", total_tokens
