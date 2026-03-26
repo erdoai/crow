@@ -42,6 +42,7 @@ WORKER_KEY_PREFIXES: tuple[str, ...] = (
     "/jobs",
     "/agents",
     "/scheduled-jobs",
+    "/api/store",
 )
 
 

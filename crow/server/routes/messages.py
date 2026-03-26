@@ -18,11 +18,14 @@ async def inbound_message(request: Request):
     content_type = request.headers.get("content-type", "")
     attachments = []
 
+    background = False
+
     if "multipart/form-data" in content_type:
         form = await request.form()
         text = form.get("text", "")
         thread_id = form.get("thread_id", "default")
         agent = form.get("agent") or None
+        background = form.get("background") in ("true", "1", True)
 
         for key, value in form.multi_items():
             if key == "files" and isinstance(value, UploadFile):
@@ -40,6 +43,7 @@ async def inbound_message(request: Request):
         text = body["text"]
         thread_id = body.get("thread_id", "default")
         agent = body.get("agent")
+        background = body.get("background", False)
 
     api_gateway = request.app.state.api_gateway
     await api_gateway.handle_inbound(
@@ -48,5 +52,6 @@ async def inbound_message(request: Request):
         agent=agent,
         user_id=user_id,
         attachments=attachments or None,
+        mode="background" if background else "chat",
     )
     return {"status": "accepted", "thread_id": thread_id}

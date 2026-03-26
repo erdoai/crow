@@ -23,6 +23,7 @@ export function useCrowRuntime(
   const [messages, setMessages] = useState<Message[]>([])
   const [isRunning, setIsRunning] = useState(false)
   const [currentActivity, setCurrentActivity] = useState<CurrentActivity | null>(null)
+  const [backgroundMode, setBackgroundMode] = useState(false)
 
   // Load messages when conversation changes
   useEffect(() => {
@@ -219,20 +220,27 @@ export function useCrowRuntime(
       }
 
       setMessages((prev) => [...prev, userMsg])
-      setIsRunning(true)
-      setCurrentActivity({ type: 'thinking', text: 'starting...' })
+      if (!backgroundMode) {
+        setIsRunning(true)
+        setCurrentActivity({ type: 'thinking', text: 'starting...' })
+      }
 
       await fetchJSON('/messages', {
         method: 'POST',
         body: JSON.stringify({
           text,
           thread_id: threadId || 'default',
+          ...(backgroundMode ? { background: true } : {}),
         }),
       })
 
+      if (backgroundMode) {
+        setBackgroundMode(false) // reset after sending
+      }
+
       onConversationCreated?.()
     },
-    [threadId, onConversationCreated],
+    [threadId, onConversationCreated, backgroundMode],
   )
 
   const runtime = useExternalStoreRuntime({
@@ -242,5 +250,5 @@ export function useCrowRuntime(
     onNew,
   })
 
-  return { runtime, messages, setMessages, currentActivity }
+  return { runtime, messages, setMessages, currentActivity, backgroundMode, setBackgroundMode }
 }

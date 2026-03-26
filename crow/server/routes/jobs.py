@@ -237,6 +237,7 @@ async def job_chunk(
             "text": payload.text,
             "tool_name": payload.tool_name,
             "agent_name": payload.agent_name,
+            "mode": job.get("mode", "chat"),
         },
     ))
     return {"status": "ok"}
@@ -314,42 +315,58 @@ async def report_result(
     # If there's a conversation, save the response and notify gateways
     job = await db.get_job(job_id)
 
+    agent_name = job["agent_name"] if job else "unknown"
+    job_mode = job.get("mode", "chat") if job else "chat"
+
     await bus.publish(Event(
         type=JOB_COMPLETED,
-        data={"job_id": job_id, "agent_name": job["agent_name"] if job else "unknown"},
+        data={
+            "job_id": job_id,
+            "agent_name": agent_name,
+            "mode": job_mode,
+        },
     ))
-    if job and job["conversation_id"]:
-        msg_id = await db.insert_message(
-            conversation_id=job["conversation_id"],
-            role="assistant",
-            content=result.output,
-            agent_name=job["agent_name"],
-        )
-        # Link any attachments the agent created during execution
-        await db.link_job_attachments_to_message(job_id, msg_id)
 
+    if job and job["conversation_id"]:
         conv = await db.get_conversation(job["conversation_id"])
-        if conv:
-            bus = request.app.state.bus
-            await bus.publish(
-                Event(
-                    type=MESSAGE_RESPONSE,
-                    data={
-                        "gateway": conv["gateway"],
-                        "gateway_thread_id": conv["gateway_thread_id"],
-                        "conversation_id": job["conversation_id"],
-                        "text": result.output,
-                        "agent_name": job["agent_name"],
-                    },
-                )
-            )
-            # Push notification to user's devices
-            if conv.get("user_id"):
+
+        if job_mode == "background":
+            # Background: no message insertion, just notify
+            if conv and conv.get("user_id"):
                 await _send_push_notification(
                     db, conv["user_id"],
-                    f"{job['agent_name']} completed",
-                    result.output[:100],
+                    f"{agent_name} completed (background)",
+                    result.output[:200],
                 )
+        else:
+            # Chat: insert message into conversation thread
+            msg_id = await db.insert_message(
+                conversation_id=job["conversation_id"],
+                role="assistant",
+                content=result.output,
+                agent_name=agent_name,
+            )
+            await db.link_job_attachments_to_message(job_id, msg_id)
+
+            if conv:
+                await bus.publish(
+                    Event(
+                        type=MESSAGE_RESPONSE,
+                        data={
+                            "gateway": conv["gateway"],
+                            "gateway_thread_id": conv["gateway_thread_id"],
+                            "conversation_id": job["conversation_id"],
+                            "text": result.output,
+                            "agent_name": agent_name,
+                        },
+                    )
+                )
+                if conv.get("user_id"):
+                    await _send_push_notification(
+                        db, conv["user_id"],
+                        f"{agent_name} completed",
+                        result.output[:100],
+                    )
 
     return {"status": "ok"}
 
@@ -444,3 +461,48 @@ async def job_heartbeat(
     """Worker reports job is still running."""
     _check_worker_key(request, x_worker_key)
     return {"status": "ok"}
+
+
+class UpdateMessage(BaseModel):
+    text: str
+    agent_name: str | None = None
+
+
+@router.post("/{job_id}/update-message")
+async def post_update_message(
+    job_id: str,
+    payload: UpdateMessage,
+    request: Request,
+    x_worker_key: str = Header(),
+):
+    """Post a message to the conversation thread during a background job."""
+    _check_worker_key(request, x_worker_key)
+    db = request.app.state.db
+    bus = request.app.state.bus
+
+    job = await db.get_job(job_id)
+    if not job or not job.get("conversation_id"):
+        return {"status": "ok"}
+
+    agent_name = payload.agent_name or job.get("agent_name", "agent")
+    msg_id = await db.insert_message(
+        conversation_id=job["conversation_id"],
+        role="assistant",
+        content=payload.text,
+        agent_name=agent_name,
+    )
+
+    conv = await db.get_conversation(job["conversation_id"])
+    if conv:
+        await bus.publish(Event(
+            type=MESSAGE_RESPONSE,
+            data={
+                "gateway": conv["gateway"],
+                "gateway_thread_id": conv["gateway_thread_id"],
+                "conversation_id": job["conversation_id"],
+                "text": payload.text,
+                "agent_name": agent_name,
+            },
+        ))
+
+    return {"status": "ok", "message_id": msg_id}

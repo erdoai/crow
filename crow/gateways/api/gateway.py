@@ -32,6 +32,7 @@ class APIGateway(Gateway):
         agent: str | None = None,
         user_id: str | None = None,
         attachments: list[dict] | None = None,
+        mode: str = "chat",
     ) -> None:
         """Called by the FastAPI route."""
         if not self._bus:
@@ -46,4 +47,6 @@ class APIGateway(Gateway):
             data["agent"] = agent
         if attachments:
             data["attachments"] = attachments
+        if mode != "chat":
+            data["mode"] = mode
         await self._bus.publish(Event(type=MESSAGE_INBOUND, data=data))

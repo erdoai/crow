@@ -82,6 +82,7 @@ export interface Job {
   agent_name: string
   status: 'pending' | 'running' | 'completed' | 'failed'
   source: 'message' | 'schedule'
+  mode: 'chat' | 'background'
   input: string
   output: string | null
   worker_id: string | null

@@ -36,6 +36,7 @@ from crow.server.routes import (
     push,
     scheduled_jobs,
     state,
+    store,
     stream,
     workers,
 )
@@ -125,6 +126,7 @@ def create_app() -> FastAPI:
     app.include_router(scheduled_jobs.router)
     app.include_router(attachments.router)
     app.include_router(push.router)
+    app.include_router(store.router)
     app.include_router(ws_router)
 
     # Auth + dashboard JSON APIs

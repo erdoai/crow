@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import { MessageSquarePlus, ChevronDown, ChevronRight } from 'lucide-react'
+import { MessageSquarePlus, ChevronDown, ChevronRight, Menu, X } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme-toggle'
 import ActivitySection from '@/components/activity/ActivitySection'
 import { useJobNotifications } from '../hooks/useJobNotifications'
@@ -23,6 +23,7 @@ export default function ChatPage() {
   const [threadId, setThreadId] = useState<string | null>(null)
   const [agentsExpanded, setAgentsExpanded] = useState(true)
   const [convosExpanded, setConvosExpanded] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // Always-on activity stream
   const { jobs, scheduledJobs, workers, cancelScheduledJob } = useActivityStream(true)
@@ -45,7 +46,7 @@ export default function ChatPage() {
     fetchJSON<Conversation[]>('/conversations').then(setConversations)
   }, [])
 
-  const { runtime, currentActivity } = useCrowRuntime(conversationId ?? null, threadId, refreshConversations)
+  const { runtime, currentActivity, backgroundMode, setBackgroundMode } = useCrowRuntime(conversationId ?? null, threadId, refreshConversations)
 
   // Toast + browser notifications for job status changes
   useJobNotifications(jobs, conversationId ?? null)
@@ -72,22 +73,44 @@ export default function ChatPage() {
     await poll()
   }
 
+  // Close sidebar when navigating to a conversation on mobile
+  const navigateAndCloseSidebar = useCallback((path: string) => {
+    navigate(path)
+    setSidebarOpen(false)
+  }, [navigate])
+
   return (
-    <div className="flex h-screen">
+    <div className="flex h-dvh">
+      {/* Mobile overlay backdrop */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-30 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-72 min-w-72 bg-sidebar border-r border-sidebar-border flex flex-col">
+      <aside className={cn(
+        'bg-sidebar border-r border-sidebar-border flex flex-col z-40',
+        // Mobile: full-screen overlay drawer
+        'fixed inset-y-0 left-0 w-72 transition-transform duration-200 ease-in-out lg:relative lg:translate-x-0 lg:min-w-72',
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+      )}>
         {/* Header */}
         <div className="p-4 flex items-center justify-between border-b border-sidebar-border">
           <button
-            onClick={() => navigate('/dashboard')}
+            onClick={() => navigateAndCloseSidebar('/dashboard')}
             className="text-lg font-bold tracking-tight text-primary no-underline"
           >
             crow
           </button>
           <div className="flex items-center">
             <ThemeToggle />
-            <Button variant="ghost" size="icon" onClick={() => navigate('/chat')}>
+            <Button variant="ghost" size="icon" onClick={() => { navigate('/chat'); setSidebarOpen(false) }}>
               <MessageSquarePlus className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setSidebarOpen(false)}>
+              <X className="h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -111,7 +134,7 @@ export default function ChatPage() {
                   key={agent.name}
                   variant="outline"
                   className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
-                  onClick={() => startChatWithAgent(agent.name)}
+                  onClick={() => { startChatWithAgent(agent.name); setSidebarOpen(false) }}
                 >
                   {agent.name}
                 </Badge>
@@ -156,7 +179,7 @@ export default function ChatPage() {
                         ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
                         : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
                     )}
-                    onClick={() => navigate(`/chat/${c.id}`)}
+                    onClick={() => navigateAndCloseSidebar(`/chat/${c.id}`)}
                   >
                     <div className="truncate">{c.gateway_thread_id}</div>
                     {c.updated_at && (
@@ -176,24 +199,34 @@ export default function ChatPage() {
       </aside>
 
       {/* Chat */}
-      <main className="flex-1 flex flex-col bg-background">
+      <main className="flex-1 flex flex-col bg-background min-w-0">
         {conversationId ? (
           <>
-            <div className="px-6 py-3 border-b bg-card font-semibold text-sm">
-              {threadId}
+            <div className="px-3 py-3 border-b bg-card font-semibold text-sm flex items-center gap-2 sm:px-6">
+              <Button variant="ghost" size="icon" className="lg:hidden shrink-0" onClick={() => setSidebarOpen(true)}>
+                <Menu className="h-4 w-4" />
+              </Button>
+              <span className="truncate">{threadId}</span>
             </div>
             <div className="flex-1 min-h-0">
               <AssistantRuntimeProvider runtime={runtime}>
-                <ActivityProvider activity={currentActivity}>
+                <ActivityProvider
+                  activity={currentActivity}
+                  backgroundMode={backgroundMode}
+                  onToggleBackground={() => setBackgroundMode(b => !b)}
+                >
                   <Thread />
                 </ActivityProvider>
               </AssistantRuntimeProvider>
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground">
+          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground p-4">
+            <Button variant="ghost" size="icon" className="lg:hidden absolute top-3 left-3" onClick={() => setSidebarOpen(true)}>
+              <Menu className="h-5 w-5" />
+            </Button>
             <MessageSquarePlus className="h-12 w-12 opacity-30" />
-            <p>select a conversation or click an agent to start chatting</p>
+            <p className="text-center">select a conversation or click an agent to start chatting</p>
           </div>
         )}
       </main>

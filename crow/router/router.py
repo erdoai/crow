@@ -54,10 +54,12 @@ class Router:
                 conversation["id"]
             ) or "pa"
 
+        mode = event.data.get("mode", "chat")
         job_id = await self.db.create_job(
             agent_name=agent_name,
             input_text=text,
             conversation_id=conversation["id"],
+            mode=mode,
         )
 
         logger.info(

@@ -62,6 +62,9 @@ export default function JobList({ jobs }: { jobs: JobWithMeta[] }) {
               <div className="flex items-center gap-2">
                 {statusIcon[job.status]}
                 <Badge variant="outline" className="text-xs">{job.agent_name}</Badge>
+                {job.mode === 'background' && (
+                  <Badge variant="secondary" className="text-[10px] px-1 py-0">bg</Badge>
+                )}
                 <span className="flex-1" />
                 {job.status === 'running' && job.started_at && (
                   <span className="text-xs text-muted-foreground tabular-nums">
@@ -91,7 +94,7 @@ export default function JobList({ jobs }: { jobs: JobWithMeta[] }) {
               )}
             >
               <div className="overflow-hidden bg-sidebar-accent/20">
-                {isExpanded && <JobDetail events={job._events || []} />}
+                {isExpanded && <JobDetail events={job._events || []} output={job.output} status={job.status} />}
               </div>
             </div>
           </div>

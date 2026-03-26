@@ -4,6 +4,8 @@ import { Wrench, MessageSquare, Activity, AlertCircle, ArrowRight } from 'lucide
 
 interface Props {
   events: JobEvent[]
+  output?: string | null
+  status?: string
 }
 
 function EventIcon({ type }: { type: JobEvent['type'] }) {
@@ -63,8 +65,11 @@ function EventRow({ event }: { event: JobEvent }) {
   )
 }
 
-export default function JobDetail({ events }: Props) {
-  if (events.length === 0) {
+export default function JobDetail({ events, output, status }: Props) {
+  const hasEvents = events.length > 0
+  const showOutput = status === 'completed' && output
+
+  if (!hasEvents && !showOutput) {
     return (
       <div className="px-3 py-2 text-[10px] text-muted-foreground">
         no events yet...
@@ -78,6 +83,15 @@ export default function JobDetail({ events }: Props) {
         {events.map((event, i) => (
           <EventRow key={i} event={event} />
         ))}
+        {showOutput && (
+          <div className="mt-1 pt-1 border-t border-border">
+            <p className="text-[10px] text-muted-foreground font-medium mb-0.5">output</p>
+            <p className="text-[10px] text-foreground whitespace-pre-wrap break-words">
+              {output.slice(0, 500)}
+              {output.length > 500 && '...'}
+            </p>
+          </div>
+        )}
       </div>
     </ScrollArea>
   )

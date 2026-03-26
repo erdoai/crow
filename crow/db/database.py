@@ -151,16 +151,20 @@ class Database:
         input_text: str,
         conversation_id: str | None = None,
         source: str = "message",
+        mode: str = "chat",
     ) -> str:
         job_id = uuid4().hex
         await self._pool.execute(
-            """INSERT INTO jobs (id, agent_name, conversation_id, status, input, source, created_at)
-               VALUES ($1, $2, $3, 'pending', $4, $5, $6)""",
+            """INSERT INTO jobs
+               (id, agent_name, conversation_id, status,
+                input, source, mode, created_at)
+               VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7)""",
             job_id,
             agent_name,
             conversation_id,
             input_text,
             source,
+            mode,
             datetime.now(UTC),
         )
         return job_id
@@ -1063,6 +1067,90 @@ class Database:
                  AND started_at < $1
                RETURNING id, agent_name, started_at, conversation_id""",
             cutoff,
+        )
+        return [dict(r) for r in rows]
+
+    # -- Agent Store (Persistent Structured KV) --
+
+    async def store_get(
+        self, namespace: str, key: str, user_id: str | None = None
+    ) -> dict | None:
+        row = await self._pool.fetchrow(
+            """SELECT data, created_at, updated_at FROM agent_store
+               WHERE namespace = $1 AND key = $2 AND user_id = $3""",
+            namespace,
+            key,
+            user_id or "",
+        )
+        return dict(row) if row else None
+
+    async def store_set(
+        self, namespace: str, key: str, data: dict, user_id: str | None = None
+    ) -> dict:
+        import json
+
+        data_json = json.dumps(data)
+        row = await self._pool.fetchrow(
+            """INSERT INTO agent_store (namespace, key, user_id, data)
+               VALUES ($1, $2, $3, $4::jsonb)
+               ON CONFLICT (namespace, key, user_id)
+               DO UPDATE SET data = $4::jsonb, updated_at = NOW()
+               RETURNING *""",
+            namespace,
+            key,
+            user_id or "",
+            data_json,
+        )
+        return dict(row)
+
+    async def store_update(
+        self,
+        namespace: str,
+        key: str,
+        path: str,
+        value,
+        user_id: str | None = None,
+    ) -> dict | None:
+        import json
+
+        # Convert dot-notation path to Postgres array: "a.0.b" -> "{a,0,b}"
+        pg_path = "{" + path.replace(".", ",") + "}"
+        value_json = json.dumps(value)
+        row = await self._pool.fetchrow(
+            """UPDATE agent_store
+               SET data = jsonb_set(data, $4::text[], $5::jsonb, true),
+                   updated_at = NOW()
+               WHERE namespace = $1 AND key = $2 AND user_id = $3
+               RETURNING *""",
+            namespace,
+            key,
+            user_id or "",
+            pg_path,
+            value_json,
+        )
+        return dict(row) if row else None
+
+    async def store_delete(
+        self, namespace: str, key: str, user_id: str | None = None
+    ) -> bool:
+        result = await self._pool.execute(
+            """DELETE FROM agent_store
+               WHERE namespace = $1 AND key = $2 AND user_id = $3""",
+            namespace,
+            key,
+            user_id or "",
+        )
+        return result.split()[-1] != "0"
+
+    async def store_list(
+        self, namespace: str, user_id: str | None = None
+    ) -> list[dict]:
+        rows = await self._pool.fetch(
+            """SELECT key, updated_at FROM agent_store
+               WHERE namespace = $1 AND user_id = $2
+               ORDER BY updated_at DESC""",
+            namespace,
+            user_id or "",
         )
         return [dict(r) for r in rows]
 

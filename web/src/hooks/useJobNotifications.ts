@@ -43,9 +43,10 @@ export function useJobNotifications(
       if (oldStatus === job.status) continue
       prev.set(job.id, job.status)
 
-      // Don't notify for jobs in the conversation the user is currently viewing
-      // (they can see the response directly)
-      if (job.source === 'message' && currentConversationId) continue
+      // Don't notify for chat jobs in the current conversation (user sees the response)
+      // Always notify for background jobs
+      const isBg = 'mode' in job && (job as Job & { mode?: string }).mode === 'background'
+      if (!isBg && job.source === 'message' && currentConversationId) continue
 
       if (job.status === 'completed') {
         toast.success(`${job.agent_name} completed`, {
