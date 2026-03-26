@@ -32,7 +32,8 @@ export function useCrowRuntime(
 
     const source = new EventSource(`/conversations/${conversationId}/stream`)
     let streamingId: string | null = null
-    let streamedText = ''
+    type Part = { type: string; text?: string; name?: string; input?: Record<string, unknown>; result?: string }
+    let streamedParts: Part[] = []
 
     source.addEventListener('chunk', (e) => {
       const data = JSON.parse(e.data) as {
@@ -47,19 +48,28 @@ export function useCrowRuntime(
       }
 
       if (data.type === 'tool_call') {
-        streamedText += `\n\n> 🔧 **${data.tool_name}** ...\n\n`
+        streamedParts.push({ type: 'tool_call', name: data.tool_name! })
       } else if (data.type === 'tool_result') {
-        // Replace the "..." with done
-        streamedText = streamedText.replace(
-          `> 🔧 **${data.tool_name}** ...`,
-          `> 🔧 **${data.tool_name}** ✓`,
-        )
+        // Find the matching tool_call and add result
+        for (let i = streamedParts.length - 1; i >= 0; i--) {
+          if (streamedParts[i].type === 'tool_call' && streamedParts[i].name === data.tool_name) {
+            // Insert result right after the tool_call
+            streamedParts.splice(i + 1, 0, { type: 'tool_result', name: data.tool_name!, result: data.text ?? '' })
+            break
+          }
+        }
       } else if (data.text) {
-        streamedText += data.text
+        // Append to last text part or create new one
+        const last = streamedParts[streamedParts.length - 1]
+        if (last?.type === 'text') {
+          last.text = (last.text ?? '') + data.text
+        } else {
+          streamedParts.push({ type: 'text', text: data.text })
+        }
       }
 
       const id = streamingId
-      const content = streamedText
+      const content = JSON.stringify(streamedParts)
       const agentName = data.agent_name
       setMessages((prev) => {
         const existing = prev.findIndex((m) => m.id === id)
@@ -94,7 +104,7 @@ export function useCrowRuntime(
         return [...prev, finalMsg]
       })
       streamingId = null
-      streamedText = ''
+      streamedParts = []
       setIsRunning(false)
     })
 
