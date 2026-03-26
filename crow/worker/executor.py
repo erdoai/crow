@@ -4,8 +4,10 @@ import asyncio
 import base64
 import json
 import logging
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import anthropic
 import httpx
@@ -37,302 +39,13 @@ def render_prompt(template_name: str, context: dict) -> str:
     return template.render(**context)
 
 
-# -- Built-in tools (delegate, knowledge) --
+# -- Built-in tool registry --
 
-BUILTIN_TOOLS = {
-    "delegate_to_agent": {
-        "name": "delegate_to_agent",
-        "description": "Delegate a task to a specialist agent.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "agent_name": {
-                    "type": "string",
-                    "description": "Agent to delegate to",
-                },
-                "task": {
-                    "type": "string",
-                    "description": "What the agent should do",
-                },
-            },
-            "required": ["agent_name", "task"],
-        },
-    },
-    "knowledge_search": {
-        "name": "knowledge_search",
-        "description": "Search PARA knowledge base via semantic + keyword.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Search query"},
-                "category": {
-                    "type": "string",
-                    "enum": ["project", "area", "resource", "archive"],
-                },
-            },
-            "required": ["query"],
-        },
-    },
-    "knowledge_write": {
-        "name": "knowledge_write",
-        "description": "Save a learning to PARA knowledge base.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "category": {
-                    "type": "string",
-                    "enum": ["project", "area", "resource"],
-                },
-                "title": {"type": "string"},
-                "content": {"type": "string"},
-                "tags": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                },
-            },
-            "required": ["category", "title", "content"],
-        },
-    },
-    "knowledge_archive": {
-        "name": "knowledge_archive",
-        "description": "Archive a knowledge entry.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "knowledge_id": {"type": "string"},
-            },
-            "required": ["knowledge_id"],
-        },
-    },
-    "upsert_agent": {
-        "name": "upsert_agent",
-        "description": (
-            "Create or update an agent. Use when the user asks"
-            " to set up a new agent or modify an existing one."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "description": "Agent identifier (lowercase, no spaces)",
-                },
-                "description": {
-                    "type": "string",
-                    "description": "What this agent does",
-                },
-                "prompt_template": {
-                    "type": "string",
-                    "description": "System prompt for the agent",
-                },
-                "tools": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": (
-                        "Tool names: delegate_to_agent,"
-                        " knowledge_search, knowledge_write,"
-                        " upsert_agent, list_agents, delete_agent,"
-                        " evaluate_run"
-                    ),
-                },
-            },
-            "required": ["name", "description", "prompt_template"],
-        },
-    },
-    "list_agents": {
-        "name": "list_agents",
-        "description": "List all configured agents with their descriptions and tools.",
-        "input_schema": {
-            "type": "object",
-            "properties": {},
-        },
-    },
-    "delete_agent": {
-        "name": "delete_agent",
-        "description": "Delete an agent by name.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string", "description": "Agent name to delete"},
-            },
-            "required": ["name"],
-        },
-    },
-    "schedule": {
-        "name": "schedule",
-        "description": (
-            "Schedule a future job. Use for heartbeats (schedule yourself to"
-            " run again later) or delayed tasks for any agent."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "agent_name": {
-                    "type": "string",
-                    "description": "Agent to run (use your own name for heartbeat)",
-                },
-                "input": {
-                    "type": "string",
-                    "description": "Message/task for the scheduled run",
-                },
-                "delay_seconds": {
-                    "type": "integer",
-                    "description": "Seconds from now to run (one-shot)",
-                },
-                "cron": {
-                    "type": "string",
-                    "description": (
-                        "Cron expression for recurring schedule"
-                        " (e.g. '*/5 * * * *'). Mutually exclusive"
-                        " with delay_seconds."
-                    ),
-                },
-                "replace": {
-                    "type": "boolean",
-                    "description": (
-                        "Cancel existing active schedules for this"
-                        " agent before creating a new one. Use for"
-                        " heartbeats to prevent duplicate schedules."
-                    ),
-                },
-            },
-            "required": ["agent_name", "input"],
-        },
-    },
-    "progress_update": {
-        "name": "progress_update",
-        "description": "Publish a progress update visible to dashboards in real-time via SSE.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "string",
-                    "description": "Human-readable status message",
-                },
-                "data": {
-                    "type": "object",
-                    "description": "Optional structured data (progress %, metrics, etc.)",
-                },
-            },
-            "required": ["status"],
-        },
-    },
-    "execute_code": {
-        "name": "execute_code",
-        "description": (
-            "Execute Python code in a sandboxed environment (E2B). "
-            "Use for data analysis, web scraping, file processing, "
-            "API calls, or any computation. Packages can be installed "
-            "with pip inside the code (e.g. subprocess or !pip install)."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "code": {
-                    "type": "string",
-                    "description": "Python code to execute",
-                },
-                "packages": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": (
-                        "Pip packages to install before running"
-                        " (e.g. ['requests', 'beautifulsoup4'])"
-                    ),
-                },
-            },
-            "required": ["code"],
-        },
-    },
-    "create_attachment": {
-        "name": "create_attachment",
-        "description": (
-            "Create a file attachment on your response. Use to send documents "
-            "like cover letters, reports, or data files to the user."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "filename": {
-                    "type": "string",
-                    "description": (
-                        "Filename with extension"
-                        " (e.g. 'cover_letter.md', 'report.csv')"
-                    ),
-                },
-                "content": {
-                    "type": "string",
-                    "description": "The text content of the file",
-                },
-                "content_type": {
-                    "type": "string",
-                    "description": "MIME type (default: text/plain)",
-                },
-            },
-            "required": ["filename", "content"],
-        },
-    },
-    "evaluate_run": {
-        "name": "evaluate_run",
-        "description": (
-            "Evaluate a completed agent run using LLM-as-judge. "
-            "Returns a structured evaluation with score (1-5), summary, "
-            "strengths, weaknesses, and improvement suggestions. "
-            "Use this to assess agent performance before making improvements."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "job_id": {
-                    "type": "string",
-                    "description": "ID of the completed job to evaluate",
-                },
-                "criteria": {
-                    "type": "string",
-                    "description": (
-                        "Optional evaluation criteria or rubric. "
-                        "If omitted, uses general quality assessment."
-                    ),
-                },
-            },
-            "required": ["job_id"],
-        },
-    },
-    "delegate_parallel": {
-        "name": "delegate_parallel",
-        "description": (
-            "Delegate tasks to multiple agents in parallel. "
-            "All agents run concurrently and results are returned together."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "delegations": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "agent_name": {
-                                "type": "string",
-                                "description": "Agent to delegate to",
-                            },
-                            "task": {
-                                "type": "string",
-                                "description": "Task description for this agent",
-                            },
-                        },
-                        "required": ["agent_name", "task"],
-                    },
-                    "description": "List of {agent_name, task} to run in parallel",
-                },
-            },
-            "required": ["delegations"],
-        },
-    },
-}
-
-
-# -- Tool handler context and dispatch --
+# Populated by @builtin_tool decorator
+BUILTIN_TOOLS: dict[str, dict] = {}
+TOOL_HANDLERS: dict[
+    str, Callable[..., Coroutine[Any, Any, str]]
+] = {}
 
 
 @dataclass
@@ -343,6 +56,44 @@ class ToolContext:
     settings: Settings | None
 
 
+def builtin_tool(
+    *, name: str, description: str, input_schema: dict
+) -> Callable:
+    """Register a built-in tool — binds schema + handler in one place."""
+    def decorator(
+        fn: Callable[..., Coroutine[Any, Any, str]],
+    ) -> Callable[..., Coroutine[Any, Any, str]]:
+        BUILTIN_TOOLS[name] = {
+            "name": name,
+            "description": description,
+            "input_schema": input_schema,
+        }
+        TOOL_HANDLERS[name] = fn
+        return fn
+    return decorator
+
+
+# -- Tool handlers --
+
+
+@builtin_tool(
+    name="delegate_to_agent",
+    description="Delegate a task to a specialist agent.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "agent_name": {
+                "type": "string",
+                "description": "Agent to delegate to",
+            },
+            "task": {
+                "type": "string",
+                "description": "What the agent should do",
+            },
+        },
+        "required": ["agent_name", "task"],
+    },
+)
 async def _handle_delegate_to_agent(inp: dict, ctx: ToolContext) -> str:
     agent_name = inp["agent_name"]
     task = inp["task"]
@@ -382,6 +133,37 @@ async def _handle_delegate_to_agent(inp: dict, ctx: ToolContext) -> str:
     return f"[{agent_name}] {output}"
 
 
+@builtin_tool(
+    name="delegate_parallel",
+    description=(
+        "Delegate tasks to multiple agents in parallel. "
+        "All agents run concurrently and results are returned together."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "delegations": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "agent_name": {
+                            "type": "string",
+                            "description": "Agent to delegate to",
+                        },
+                        "task": {
+                            "type": "string",
+                            "description": "Task description for this agent",
+                        },
+                    },
+                    "required": ["agent_name", "task"],
+                },
+                "description": "List of {agent_name, task} to run in parallel",
+            },
+        },
+        "required": ["delegations"],
+    },
+)
 async def _handle_delegate_parallel(inp: dict, ctx: ToolContext) -> str:
     delegations = inp.get("delegations", [])
     if not delegations:
@@ -397,7 +179,10 @@ async def _handle_delegate_parallel(inp: dict, ctx: ToolContext) -> str:
                 timeout=10,
             )
             if resp.status_code != 200:
-                return {"agent": name, "result": f"Agent '{name}' not found."}
+                return {
+                    "agent": name,
+                    "result": f"Agent '{name}' not found.",
+                }
             agent_def = resp.json()
 
         delegate_job_data = {
@@ -430,6 +215,21 @@ async def _handle_delegate_parallel(inp: dict, ctx: ToolContext) -> str:
     return json.dumps(list(results), indent=2)
 
 
+@builtin_tool(
+    name="knowledge_search",
+    description="Search PARA knowledge base via semantic + keyword.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Search query"},
+            "category": {
+                "type": "string",
+                "enum": ["project", "area", "resource", "archive"],
+            },
+        },
+        "required": ["query"],
+    },
+)
 async def _handle_knowledge_search(inp: dict, ctx: ToolContext) -> str:
     async with httpx.AsyncClient() as client:
         params = {
@@ -445,6 +245,26 @@ async def _handle_knowledge_search(inp: dict, ctx: ToolContext) -> str:
         return resp.text
 
 
+@builtin_tool(
+    name="knowledge_write",
+    description="Save a learning to PARA knowledge base.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "category": {
+                "type": "string",
+                "enum": ["project", "area", "resource"],
+            },
+            "title": {"type": "string"},
+            "content": {"type": "string"},
+            "tags": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+        },
+        "required": ["category", "title", "content"],
+    },
+)
 async def _handle_knowledge_write(inp: dict, ctx: ToolContext) -> str:
     async with httpx.AsyncClient() as client:
         resp = await client.post(
@@ -461,6 +281,17 @@ async def _handle_knowledge_write(inp: dict, ctx: ToolContext) -> str:
         return resp.text
 
 
+@builtin_tool(
+    name="knowledge_archive",
+    description="Archive a knowledge entry.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "knowledge_id": {"type": "string"},
+        },
+        "required": ["knowledge_id"],
+    },
+)
 async def _handle_knowledge_archive(inp: dict, ctx: ToolContext) -> str:
     async with httpx.AsyncClient() as client:
         kid = inp["knowledge_id"]
@@ -473,6 +304,41 @@ async def _handle_knowledge_archive(inp: dict, ctx: ToolContext) -> str:
         return resp.text
 
 
+@builtin_tool(
+    name="upsert_agent",
+    description=(
+        "Create or update an agent. Use when the user asks"
+        " to set up a new agent or modify an existing one."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "name": {
+                "type": "string",
+                "description": "Agent identifier (lowercase, no spaces)",
+            },
+            "description": {
+                "type": "string",
+                "description": "What this agent does",
+            },
+            "prompt_template": {
+                "type": "string",
+                "description": "System prompt for the agent",
+            },
+            "tools": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Tool names: delegate_to_agent,"
+                    " knowledge_search, knowledge_write,"
+                    " upsert_agent, list_agents, delete_agent,"
+                    " evaluate_run"
+                ),
+            },
+        },
+        "required": ["name", "description", "prompt_template"],
+    },
+)
 async def _handle_upsert_agent(inp: dict, ctx: ToolContext) -> str:
     async with httpx.AsyncClient() as client:
         resp = await client.post(
@@ -490,6 +356,16 @@ async def _handle_upsert_agent(inp: dict, ctx: ToolContext) -> str:
         return resp.text
 
 
+@builtin_tool(
+    name="list_agents",
+    description=(
+        "List all configured agents with their descriptions and tools."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {},
+    },
+)
 async def _handle_list_agents(inp: dict, ctx: ToolContext) -> str:
     async with httpx.AsyncClient() as client:
         resp = await client.get(
@@ -499,6 +375,20 @@ async def _handle_list_agents(inp: dict, ctx: ToolContext) -> str:
         return resp.text
 
 
+@builtin_tool(
+    name="delete_agent",
+    description="Delete an agent by name.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "name": {
+                "type": "string",
+                "description": "Agent name to delete",
+            },
+        },
+        "required": ["name"],
+    },
+)
 async def _handle_delete_agent(inp: dict, ctx: ToolContext) -> str:
     async with httpx.AsyncClient() as client:
         resp = await client.delete(
@@ -508,6 +398,49 @@ async def _handle_delete_agent(inp: dict, ctx: ToolContext) -> str:
         return resp.text
 
 
+@builtin_tool(
+    name="schedule",
+    description=(
+        "Schedule a future job. Use for heartbeats (schedule yourself to"
+        " run again later) or delayed tasks for any agent."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "agent_name": {
+                "type": "string",
+                "description": (
+                    "Agent to run (use your own name for heartbeat)"
+                ),
+            },
+            "input": {
+                "type": "string",
+                "description": "Message/task for the scheduled run",
+            },
+            "delay_seconds": {
+                "type": "integer",
+                "description": "Seconds from now to run (one-shot)",
+            },
+            "cron": {
+                "type": "string",
+                "description": (
+                    "Cron expression for recurring schedule"
+                    " (e.g. '*/5 * * * *'). Mutually exclusive"
+                    " with delay_seconds."
+                ),
+            },
+            "replace": {
+                "type": "boolean",
+                "description": (
+                    "Cancel existing active schedules for this"
+                    " agent before creating a new one. Use for"
+                    " heartbeats to prevent duplicate schedules."
+                ),
+            },
+        },
+        "required": ["agent_name", "input"],
+    },
+)
 async def _handle_schedule(inp: dict, ctx: ToolContext) -> str:
     payload = {
         "agent_name": inp["agent_name"],
@@ -543,6 +476,72 @@ async def _handle_schedule(inp: dict, ctx: ToolContext) -> str:
         )
 
 
+@builtin_tool(
+    name="progress_update",
+    description=(
+        "Publish a progress update visible to dashboards"
+        " in real-time via SSE."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "status": {
+                "type": "string",
+                "description": "Human-readable status message",
+            },
+            "data": {
+                "type": "object",
+                "description": (
+                    "Optional structured data (progress %, metrics, etc.)"
+                ),
+            },
+        },
+        "required": ["status"],
+    },
+)
+async def _handle_progress_update(inp: dict, ctx: ToolContext) -> str:
+    job_id = ctx.job.get("id", "unknown")
+    async with httpx.AsyncClient() as client:
+        await client.post(
+            f"{ctx.server_url}/jobs/{job_id}/progress",
+            headers=ctx.headers,
+            json={
+                "status": inp["status"],
+                "data": inp.get("data"),
+                "agent_name": ctx.job.get("agent_name"),
+            },
+            timeout=10,
+        )
+        return f"Progress published: {inp['status']}"
+
+
+@builtin_tool(
+    name="execute_code",
+    description=(
+        "Execute Python code in a sandboxed environment (E2B). "
+        "Use for data analysis, web scraping, file processing, "
+        "API calls, or any computation. Packages can be installed "
+        "with pip inside the code (e.g. subprocess or !pip install)."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "code": {
+                "type": "string",
+                "description": "Python code to execute",
+            },
+            "packages": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Pip packages to install before running"
+                    " (e.g. ['requests', 'beautifulsoup4'])"
+                ),
+            },
+        },
+        "required": ["code"],
+    },
+)
 async def _handle_execute_code(inp: dict, ctx: ToolContext) -> str:
     try:
         from e2b_code_interpreter import AsyncSandbox
@@ -590,9 +589,39 @@ async def _handle_execute_code(inp: dict, ctx: ToolContext) -> str:
         return f"Code execution failed: {e}"
 
 
+@builtin_tool(
+    name="create_attachment",
+    description=(
+        "Create a file attachment on your response. Use to send"
+        " documents like cover letters, reports, or data files."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "filename": {
+                "type": "string",
+                "description": (
+                    "Filename with extension"
+                    " (e.g. 'cover_letter.md', 'report.csv')"
+                ),
+            },
+            "content": {
+                "type": "string",
+                "description": "The text content of the file",
+            },
+            "content_type": {
+                "type": "string",
+                "description": "MIME type (default: text/plain)",
+            },
+        },
+        "required": ["filename", "content"],
+    },
+)
 async def _handle_create_attachment(inp: dict, ctx: ToolContext) -> str:
     content = inp["content"]
-    content_b64 = base64.b64encode(content.encode("utf-8")).decode("ascii")
+    content_b64 = base64.b64encode(
+        content.encode("utf-8")
+    ).decode("ascii")
     ct = inp.get("content_type", "text/plain")
     filename = inp["filename"]
     size_bytes = len(content.encode("utf-8"))
@@ -616,22 +645,33 @@ async def _handle_create_attachment(inp: dict, ctx: ToolContext) -> str:
         return f"Created attachment: {filename} (id={att_data['id']})"
 
 
-async def _handle_progress_update(inp: dict, ctx: ToolContext) -> str:
-    job_id = ctx.job.get("id", "unknown")
-    async with httpx.AsyncClient() as client:
-        await client.post(
-            f"{ctx.server_url}/jobs/{job_id}/progress",
-            headers=ctx.headers,
-            json={
-                "status": inp["status"],
-                "data": inp.get("data"),
-                "agent_name": ctx.job.get("agent_name"),
+@builtin_tool(
+    name="evaluate_run",
+    description=(
+        "Evaluate a completed agent run using LLM-as-judge. "
+        "Returns a structured evaluation with score (1-5), summary, "
+        "strengths, weaknesses, and improvement suggestions. "
+        "Use this to assess agent performance before making "
+        "improvements."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "job_id": {
+                "type": "string",
+                "description": "ID of the completed job to evaluate",
             },
-            timeout=10,
-        )
-        return f"Progress published: {inp['status']}"
-
-
+            "criteria": {
+                "type": "string",
+                "description": (
+                    "Optional evaluation criteria or rubric. "
+                    "If omitted, uses general quality assessment."
+                ),
+            },
+        },
+        "required": ["job_id"],
+    },
+)
 async def _handle_evaluate_run(inp: dict, ctx: ToolContext) -> str:
     eval_job_id = inp["job_id"]
     criteria = inp.get("criteria", "")
@@ -644,7 +684,9 @@ async def _handle_evaluate_run(inp: dict, ctx: ToolContext) -> str:
             timeout=30,
         )
         if resp.status_code != 200:
-            return json.dumps({"error": f"Job {eval_job_id} not found"})
+            return json.dumps(
+                {"error": f"Job {eval_job_id} not found"}
+            )
         eval_data = resp.json()
 
     eval_job = eval_data["job"]
@@ -692,7 +734,9 @@ async def _handle_evaluate_run(inp: dict, ctx: ToolContext) -> str:
 
     # Call Claude as judge
     if not ctx.settings or not ctx.settings.anthropic_api_key:
-        return json.dumps({"error": "No Anthropic API key configured"})
+        return json.dumps(
+            {"error": "No Anthropic API key configured"}
+        )
 
     ai_client = anthropic.AsyncAnthropic(
         api_key=ctx.settings.anthropic_api_key,
@@ -719,22 +763,7 @@ async def _handle_evaluate_run(inp: dict, ctx: ToolContext) -> str:
     return json.dumps(evaluation, indent=2)
 
 
-# Maps tool name → handler function
-TOOL_HANDLERS: dict[str, callable] = {
-    "delegate_to_agent": _handle_delegate_to_agent,
-    "delegate_parallel": _handle_delegate_parallel,
-    "knowledge_search": _handle_knowledge_search,
-    "knowledge_write": _handle_knowledge_write,
-    "knowledge_archive": _handle_knowledge_archive,
-    "upsert_agent": _handle_upsert_agent,
-    "list_agents": _handle_list_agents,
-    "delete_agent": _handle_delete_agent,
-    "schedule": _handle_schedule,
-    "execute_code": _handle_execute_code,
-    "create_attachment": _handle_create_attachment,
-    "progress_update": _handle_progress_update,
-    "evaluate_run": _handle_evaluate_run,
-}
+# -- Dispatcher --
 
 
 async def execute_builtin(
@@ -757,6 +786,9 @@ async def execute_builtin(
         settings=settings,
     )
     return await handler(tool_input, ctx)
+
+
+# -- Agent runner --
 
 
 async def run_agent(
