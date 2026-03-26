@@ -38,13 +38,14 @@ def _user_id_from_request(request, user):
 async def list_jobs(
     request: Request,
     status: str | None = None,
+    source: str | None = None,
     limit: int = 50,
 ):
     """List recent jobs."""
     user = await get_current_user(request)
     uid = _user_id_from_request(request, user)
     db = request.app.state.db
-    return await db.list_jobs(status=status, limit=limit, user_id=uid)
+    return await db.list_jobs(status=status, source=source, limit=limit, user_id=uid)
 
 
 @router.get("/{job_id}")
@@ -81,6 +82,7 @@ async def claim_next_job(request: Request, x_worker_key: str = Header()):
             "agent_name": job["agent_name"],
             "conversation_id": job.get("conversation_id"),
             "input": job.get("input", ""),
+            "source": job.get("source", "message"),
         },
     ))
 

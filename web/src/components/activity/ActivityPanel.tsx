@@ -12,7 +12,13 @@ type Tab = 'jobs' | 'scheduled' | 'workers'
 
 export default function ActivityPanel({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('jobs')
+  const [showAll, setShowAll] = useState(false)
   const { jobs, scheduledJobs, workers, cancelScheduledJob } = useActivityStream(true)
+
+  // Default: only background jobs (schedule). Toggle to show all including chat messages.
+  const filteredJobs = showAll ? jobs : jobs.filter(j =>
+    j.source !== 'message' || j.status === 'running' || j.status === 'pending'
+  )
 
   return (
     <aside className="w-80 min-w-80 border-l flex flex-col bg-sidebar">
@@ -41,7 +47,19 @@ export default function ActivityPanel({ onClose }: { onClose: () => void }) {
       </div>
 
       <ScrollArea className="flex-1">
-        {tab === 'jobs' && <JobList jobs={jobs} />}
+        {tab === 'jobs' && (
+          <>
+            <div className="px-3 pt-2 pb-1">
+              <button
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setShowAll(a => !a)}
+              >
+                {showAll ? 'hide chat jobs' : 'show all jobs'}
+              </button>
+            </div>
+            <JobList jobs={filteredJobs} />
+          </>
+        )}
         {tab === 'scheduled' && (
           <ScheduledJobList scheduledJobs={scheduledJobs} onCancel={cancelScheduledJob} />
         )}

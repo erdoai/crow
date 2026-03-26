@@ -150,15 +150,17 @@ class Database:
         agent_name: str,
         input_text: str,
         conversation_id: str | None = None,
+        source: str = "message",
     ) -> str:
         job_id = uuid4().hex
         await self._pool.execute(
-            """INSERT INTO jobs (id, agent_name, conversation_id, status, input, created_at)
-               VALUES ($1, $2, $3, 'pending', $4, $5)""",
+            """INSERT INTO jobs (id, agent_name, conversation_id, status, input, source, created_at)
+               VALUES ($1, $2, $3, 'pending', $4, $5, $6)""",
             job_id,
             agent_name,
             conversation_id,
             input_text,
+            source,
             datetime.now(UTC),
         )
         return job_id
@@ -223,7 +225,11 @@ class Database:
         return dict(row) if row else None
 
     async def list_jobs(
-        self, status: str | None = None, limit: int = 50, user_id: str | None = None
+        self,
+        status: str | None = None,
+        source: str | None = None,
+        limit: int = 50,
+        user_id: str | None = None,
     ) -> list[dict]:
         conditions = []
         params: list = []
@@ -239,6 +245,11 @@ class Database:
         if status:
             conditions.append(f"j.status = ${idx}")
             params.append(status)
+            idx += 1
+
+        if source:
+            conditions.append(f"j.source = ${idx}")
+            params.append(source)
             idx += 1
 
         where = f" WHERE {' AND '.join(conditions)}" if conditions else ""

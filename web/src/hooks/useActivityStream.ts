@@ -41,6 +41,7 @@ function reducer(state: State, action: Action): State {
         id: action.data.job_id,
         agent_name: action.data.agent_name,
         status: 'running',
+        source: (action.data.source as Job['source']) || 'message',
         input: action.data.input || '',
         output: null,
         worker_id: null,

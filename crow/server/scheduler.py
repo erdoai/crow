@@ -27,6 +27,7 @@ async def scheduler_loop(db: Database, bus: EventBus) -> None:
                     agent_name=sj["agent_name"],
                     input_text=sj["input"],
                     conversation_id=sj.get("conversation_id"),
+                    source="schedule",
                 )
                 await bus.publish(Event(
                     type=JOB_CREATED,
