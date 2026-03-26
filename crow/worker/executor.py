@@ -259,6 +259,15 @@ async def _handle_knowledge_search(inp: dict, ctx: ToolContext) -> str:
             },
             "title": {"type": "string"},
             "content": {"type": "string"},
+            "source_type": {
+                "type": "string",
+                "enum": ["url", "file", "agent", "user"],
+                "description": "Type of source (url, file, agent, user)",
+            },
+            "source_ref": {
+                "type": "string",
+                "description": "Source reference — a URL, filename, etc. URLs must be verified reachable before saving.",
+            },
             "tags": {
                 "type": "array",
                 "items": {"type": "string"},
@@ -277,6 +286,8 @@ async def _handle_knowledge_write(inp: dict, ctx: ToolContext) -> str:
                 "title": inp["title"],
                 "content": inp["content"],
                 "tags": inp.get("tags", []),
+                "source_type": inp.get("source_type"),
+                "source_ref": inp.get("source_ref"),
             },
             timeout=10,
         )
@@ -949,12 +960,15 @@ async def run_agent(
 
     # Inject knowledge into system prompt
     if knowledge_entries:
-        knowledge_section = "\n\n## Your knowledge\n\n"
-        knowledge_section += "\n\n".join(
-            f"### [{e['category']}] {e['title']}\n{e['content']}"
-            for e in knowledge_entries
-        )
-        system_prompt += knowledge_section
+        parts = []
+        for e in knowledge_entries:
+            header = f"### [{e['category']}] {e['title']}"
+            if e.get("source_ref"):
+                header += f"\nSource: {e['source_ref']}"
+            if e.get("updated_at"):
+                header += f"\nUpdated: {e['updated_at']}"
+            parts.append(f"{header}\n{e['content']}")
+        system_prompt += "\n\n## Your knowledge\n\n" + "\n\n".join(parts)
 
     # Build messages (with attachment content blocks)
     api_messages = []

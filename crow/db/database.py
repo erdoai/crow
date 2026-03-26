@@ -345,25 +345,30 @@ class Database:
         category: str,
         title: str,
         content: str,
-        source: str | None = None,
+        source_type: str | None = None,
+        source_ref: str | None = None,
         tags: list[str] | None = None,
         embedding: list[float] | None = None,
         user_id: str | None = None,
     ) -> str:
         knowledge_id = uuid4().hex
         now = datetime.now(UTC)
+        verified_at = now if source_ref else None
         if embedding:
             await self._pool.execute(
                 """INSERT INTO knowledge
                    (id, agent_name, category, title, content,
-                    source, tags, embedding, user_id, created_at, updated_at)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)""",
+                    source_type, source_ref, source_verified_at,
+                    tags, embedding, user_id, created_at, updated_at)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)""",
                 knowledge_id,
                 agent_name,
                 category,
                 title,
                 content,
-                source,
+                source_type,
+                source_ref,
+                verified_at,
                 tags or [],
                 str(embedding),
                 user_id,
@@ -374,14 +379,17 @@ class Database:
             await self._pool.execute(
                 """INSERT INTO knowledge
                    (id, agent_name, category, title, content,
-                    source, tags, user_id, created_at, updated_at)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)""",
+                    source_type, source_ref, source_verified_at,
+                    tags, user_id, created_at, updated_at)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)""",
                 knowledge_id,
                 agent_name,
                 category,
                 title,
                 content,
-                source,
+                source_type,
+                source_ref,
+                verified_at,
                 tags or [],
                 user_id,
                 now,

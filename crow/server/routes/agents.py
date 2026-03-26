@@ -169,6 +169,8 @@ class KnowledgeWrite(BaseModel):
     title: str
     content: str
     tags: list[str] = []
+    source_type: str | None = None
+    source_ref: str | None = None
 
 
 @router.post("/agents/{name}/knowledge")
@@ -194,7 +196,8 @@ async def write_knowledge(
         category=entry.category,
         title=entry.title,
         content=entry.content,
-        source="agent",
+        source_type=entry.source_type or "agent",
+        source_ref=entry.source_ref,
         tags=entry.tags,
         embedding=embedding,
     )
