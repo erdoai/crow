@@ -266,7 +266,10 @@ async def _handle_knowledge_search(inp: dict, ctx: ToolContext) -> str:
             },
             "source_ref": {
                 "type": "string",
-                "description": "Source reference — a URL, filename, etc. URLs must be verified reachable before saving.",
+                "description": (
+                    "Source reference — a URL, filename, etc. "
+                    "URLs must be verified reachable before saving."
+                ),
             },
             "tags": {
                 "type": "array",

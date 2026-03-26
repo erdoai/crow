@@ -98,7 +98,44 @@ final class CrowAPI {
         return try await post("/auth/verify", body: body)
     }
 
+    // MARK: - Jobs
+
+    func listJobs(limit: Int = 50) async throws -> [Job] {
+        try await get("/jobs?limit=\(limit)")
+    }
+
+    func listScheduledJobs() async throws -> [ScheduledJob] {
+        try await get("/scheduled-jobs")
+    }
+
+    func listWorkers() async throws -> [WorkerInfo] {
+        try await get("/workers")
+    }
+
+    @discardableResult
+    func cancelScheduledJob(id: String) async throws -> [String: String] {
+        try await delete("/scheduled-jobs/\(id)")
+    }
+
+    // MARK: - Push Notifications
+
+    @discardableResult
+    func registerDeviceToken(_ token: String) async throws -> [String: String] {
+        let body = DeviceTokenRequest(device_token: token, platform: "apns")
+        return try await post("/push/register", body: body)
+    }
+
+    @discardableResult
+    func unregisterDeviceToken(_ token: String) async throws -> [String: String] {
+        try await delete("/push/register/\(token)")
+    }
+
     // MARK: - SSE
+
+    func stateStream() -> URL? {
+        guard let base = server.baseURL else { return nil }
+        return base.appendingPathComponent("/api/state/stream")
+    }
 
     func messageStream(conversationId: String) -> URL? {
         guard let base = server.baseURL else { return nil }

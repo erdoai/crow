@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
-import type { Job } from '../../api'
+import type { Job, JobEvent } from '../../api'
 import { Circle, CircleCheck, CircleX, Clock } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import JobDetail from './JobDetail'
 
 function Elapsed({ since }: { since: string }) {
   const [, tick] = useState(0)
@@ -22,7 +24,11 @@ const statusIcon: Record<string, React.ReactNode> = {
   failed: <CircleX className="h-3 w-3 text-destructive" />,
 }
 
-export default function JobList({ jobs }: { jobs: Job[] }) {
+type JobWithMeta = Job & { _progress?: string; _events?: JobEvent[] }
+
+export default function JobList({ jobs }: { jobs: JobWithMeta[] }) {
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+
   // Pin active jobs to top, then recent by time
   const sorted = [...jobs].sort((a, b) => {
     const active = (s: string) => s === 'running' || s === 'pending' ? 0 : 1
@@ -37,35 +43,57 @@ export default function JobList({ jobs }: { jobs: Job[] }) {
 
   return (
     <div className="flex flex-col">
-      {sorted.map(job => (
-        <div key={job.id} className="px-3 py-2 border-b last:border-0">
-          <div className="flex items-center gap-2">
-            {statusIcon[job.status]}
-            <Badge variant="outline" className="text-xs">{job.agent_name}</Badge>
-            <span className="flex-1" />
-            {job.status === 'running' && job.started_at && (
-              <span className="text-xs text-muted-foreground tabular-nums">
-                <Elapsed since={job.started_at} />
-              </span>
-            )}
-            {job.status === 'completed' && (
-              <span className="text-xs text-muted-foreground">done</span>
-            )}
-            {job.status === 'failed' && (
-              <span className="text-xs text-destructive">failed</span>
-            )}
+      {sorted.map(job => {
+        const isExpanded = expandedId === job.id
+        const hasEvents = (job._events?.length ?? 0) > 0
+        return (
+          <div key={job.id} className="border-b last:border-0">
+            <div
+              className={cn(
+                'px-3 py-2 cursor-pointer transition-colors',
+                isExpanded ? 'bg-sidebar-accent/50' : 'hover:bg-sidebar-accent/30',
+                (job.status === 'running') && 'border-l-2 border-l-green-500',
+              )}
+              onClick={() => setExpandedId(isExpanded ? null : job.id)}
+            >
+              <div className="flex items-center gap-2">
+                {statusIcon[job.status]}
+                <Badge variant="outline" className="text-xs">{job.agent_name}</Badge>
+                <span className="flex-1" />
+                {job.status === 'running' && job.started_at && (
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    <Elapsed since={job.started_at} />
+                  </span>
+                )}
+                {job.status === 'completed' && (
+                  <span className="text-xs text-muted-foreground">done</span>
+                )}
+                {job.status === 'failed' && (
+                  <span className="text-xs text-destructive">failed</span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1 truncate">{job.input}</p>
+              {!isExpanded && job._progress && (
+                <p className="text-xs text-primary mt-1 truncate">{job._progress}</p>
+              )}
+              {!isExpanded && job.error && (
+                <p className="text-xs text-destructive mt-1 truncate">{job.error}</p>
+              )}
+            </div>
+            {/* Expanded detail */}
+            <div
+              className={cn(
+                'grid transition-all duration-200 ease-in-out',
+                isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+              )}
+            >
+              <div className="overflow-hidden bg-sidebar-accent/20">
+                {isExpanded && <JobDetail events={job._events || []} />}
+              </div>
+            </div>
           </div>
-          <p className="text-xs text-muted-foreground mt-1 truncate">{job.input}</p>
-          {(job as Job & { _progress?: string })._progress && (
-            <p className="text-xs text-primary mt-1 truncate">
-              {(job as Job & { _progress?: string })._progress}
-            </p>
-          )}
-          {job.error && (
-            <p className="text-xs text-destructive mt-1 truncate">{job.error}</p>
-          )}
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

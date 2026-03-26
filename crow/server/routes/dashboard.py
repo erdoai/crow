@@ -64,7 +64,10 @@ async def list_views(request: Request):
 
 @router.post("/api/dashboard/views")
 async def upload_view(request: Request):
-    """Upload a dashboard view. Scoped to the authenticated user (or instance-level if static API key)."""
+    """Upload a dashboard view.
+
+    Scoped to the authenticated user (or instance-level if static API key).
+    """
     user_id = _uid(request)
 
     db = request.app.state.db
@@ -85,7 +88,8 @@ async def upload_view(request: Request):
                 files[upload.filename] = base64.b64encode(content).decode()
 
         await db.upsert_dashboard_view(str(name), str(label), files, user_id=user_id)
-        return {"status": "ok", "name": name, "files": len(files), "scope": "user" if user_id else "instance"}
+        scope = "user" if user_id else "instance"
+        return {"status": "ok", "name": name, "files": len(files), "scope": scope}
 
     else:
         body = await request.json()
@@ -96,7 +100,8 @@ async def upload_view(request: Request):
             raise HTTPException(status_code=400, detail="name is required")
 
         await db.upsert_dashboard_view(name, label, files, user_id=user_id)
-        return {"status": "ok", "name": name, "files": len(files), "scope": "user" if user_id else "instance"}
+        scope = "user" if user_id else "instance"
+        return {"status": "ok", "name": name, "files": len(files), "scope": scope}
 
 
 @router.delete("/api/dashboard/views/{name}")

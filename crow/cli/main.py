@@ -314,7 +314,6 @@ def mcp_add(
     ),
 ):
     """Add an MCP server."""
-    import httpx
 
     headers = {}
     for h in header:
@@ -369,7 +368,6 @@ def mcp_remove(
     ),
 ):
     """Remove an MCP server."""
-    import httpx
 
     resp = _http().delete(f"{server_url}/mcp-servers/{name}")
     resp.raise_for_status()
@@ -389,7 +387,6 @@ def settings_import(
     ),
 ):
     """Import crow.yml into the database."""
-    import httpx
 
     with open(path) as f:
         body = f.read()
@@ -414,7 +411,6 @@ def settings_export(
     ),
 ):
     """Export current config as YAML."""
-    import httpx
     import yaml
 
     resp = _http().get(f"{server_url}/settings/export")

@@ -1,5 +1,7 @@
 """Job queue endpoints — public listing + worker-facing claim/result."""
 
+import logging
+
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel
 
@@ -15,7 +17,18 @@ from crow.events.types import (
     Event,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/jobs")
+
+
+async def _send_push_notification(db, user_id: str, title: str, body: str) -> None:
+    """Best-effort push notification — never raises."""
+    try:
+        from crow.notifications.apns import notify_user
+        await notify_user(db, user_id, title, body)
+    except Exception:
+        logger.debug("Push notification skipped (not configured or failed)")
 
 
 def _check_worker_key(request: Request, x_worker_key: str = Header()) -> None:
@@ -322,6 +335,13 @@ async def report_result(
                     },
                 )
             )
+            # Push notification to user's devices
+            if conv.get("user_id"):
+                await _send_push_notification(
+                    db, conv["user_id"],
+                    f"{job['agent_name']} completed",
+                    result.output[:100],
+                )
 
     return {"status": "ok"}
 
@@ -392,6 +412,17 @@ async def report_error(
         type=JOB_FAILED,
         data={"job_id": job_id, "error": err.error},
     ))
+
+    # Push notification on failure
+    job = await db.get_job(job_id)
+    if job and job.get("conversation_id"):
+        conv = await db.get_conversation(job["conversation_id"])
+        if conv and conv.get("user_id"):
+            await _send_push_notification(
+                db, conv["user_id"],
+                f"{job['agent_name']} failed",
+                err.error[:100],
+            )
 
     return {"status": "ok"}
 

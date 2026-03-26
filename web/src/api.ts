@@ -107,3 +107,11 @@ export interface Worker {
   last_heartbeat: string
   status: string
 }
+
+export interface JobEvent {
+  type: 'tool_call' | 'tool_result' | 'text' | 'progress' | 'error'
+  text?: string
+  tool_name?: string
+  agent_name?: string
+  timestamp: string
+}

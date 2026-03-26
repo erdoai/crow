@@ -6,6 +6,12 @@ import {
 } from '@assistant-ui/react'
 import { fetchJSON, type Message } from '../api'
 
+export interface CurrentActivity {
+  type: 'tool' | 'progress' | 'thinking'
+  text: string
+  agentName?: string
+}
+
 /**
  * Bridges our backend (POST /messages + SSE) to assistant-ui's ExternalStoreRuntime.
  */
@@ -16,6 +22,7 @@ export function useCrowRuntime(
 ) {
   const [messages, setMessages] = useState<Message[]>([])
   const [isRunning, setIsRunning] = useState(false)
+  const [currentActivity, setCurrentActivity] = useState<CurrentActivity | null>(null)
 
   // Load messages when conversation changes
   useEffect(() => {
@@ -49,6 +56,7 @@ export function useCrowRuntime(
 
       if (data.type === 'tool_call') {
         streamedParts.push({ type: 'tool_call', name: data.tool_name! })
+        setCurrentActivity({ type: 'tool', text: data.tool_name!, agentName: data.agent_name ?? undefined })
       } else if (data.type === 'tool_result') {
         // Find the matching tool_call and add result
         for (let i = streamedParts.length - 1; i >= 0; i--) {
@@ -66,6 +74,7 @@ export function useCrowRuntime(
         } else {
           streamedParts.push({ type: 'text', text: data.text })
         }
+        setCurrentActivity({ type: 'thinking', text: 'generating response...', agentName: data.agent_name ?? undefined })
       }
 
       const id = streamingId
@@ -92,6 +101,8 @@ export function useCrowRuntime(
       // Show progress as a streaming assistant message
       const id = streamingId || `streaming-${data.job_id}`
       if (!streamingId) streamingId = id
+
+      setCurrentActivity({ type: 'progress', text: data.status, agentName: data.agent_name ?? undefined })
 
       // Add or update a progress text part
       const progressText = `*${data.agent_name || 'agent'}:* ${data.status}`
@@ -139,6 +150,7 @@ export function useCrowRuntime(
       streamingId = null
       streamedParts = []
       setIsRunning(false)
+      setCurrentActivity(null)
     })
 
     return () => source.close()
@@ -208,6 +220,7 @@ export function useCrowRuntime(
 
       setMessages((prev) => [...prev, userMsg])
       setIsRunning(true)
+      setCurrentActivity({ type: 'thinking', text: 'starting...' })
 
       await fetchJSON('/messages', {
         method: 'POST',
@@ -229,5 +242,5 @@ export function useCrowRuntime(
     onNew,
   })
 
-  return { runtime, messages, setMessages }
+  return { runtime, messages, setMessages, currentActivity }
 }

@@ -832,9 +832,12 @@ class Database:
     ) -> str:
         att_id = uuid4().hex
         await self._pool.execute(
-            """INSERT INTO attachments (id, message_id, filename, content_type, size_bytes, data, created_at)
+            """INSERT INTO attachments
+               (id, message_id, filename, content_type,
+                size_bytes, data, created_at)
                VALUES ($1, $2, $3, $4, $5, $6, $7)""",
-            att_id, message_id, filename, content_type, size_bytes, data, datetime.now(UTC),
+            att_id, message_id, filename, content_type,
+            size_bytes, data, datetime.now(UTC),
         )
         return att_id
 
@@ -848,9 +851,12 @@ class Database:
     ) -> str:
         att_id = uuid4().hex
         await self._pool.execute(
-            """INSERT INTO attachments (id, job_id, filename, content_type, size_bytes, data, created_at)
+            """INSERT INTO attachments
+               (id, job_id, filename, content_type,
+                size_bytes, data, created_at)
                VALUES ($1, $2, $3, $4, $5, $6, $7)""",
-            att_id, job_id, filename, content_type, size_bytes, data, datetime.now(UTC),
+            att_id, job_id, filename, content_type,
+            size_bytes, data, datetime.now(UTC),
         )
         return att_id
 
@@ -1005,4 +1011,34 @@ class Database:
                 scheduled_id,
             )
         return result.split()[-1] != "0"
+
+    # -- Device Tokens (Push Notifications) --
+
+    async def register_device_token(
+        self, user_id: str, token: str, platform: str = "apns"
+    ) -> dict:
+        row_id = uuid4().hex
+        await self._pool.execute(
+            """INSERT INTO device_tokens (id, user_id, token, platform)
+               VALUES ($1, $2, $3, $4)
+               ON CONFLICT (token) DO UPDATE SET user_id = $2, platform = $4""",
+            row_id,
+            user_id,
+            token,
+            platform,
+        )
+        return {"id": row_id, "token": token, "platform": platform}
+
+    async def unregister_device_token(self, token: str) -> bool:
+        result = await self._pool.execute(
+            "DELETE FROM device_tokens WHERE token = $1", token
+        )
+        return result.split()[-1] != "0"
+
+    async def get_device_tokens_for_user(self, user_id: str) -> list[dict]:
+        rows = await self._pool.fetch(
+            "SELECT token, platform FROM device_tokens WHERE user_id = $1",
+            user_id,
+        )
+        return [dict(r) for r in rows]
 

@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react'
-import { fetchJSON, type Job, type ScheduledJob, type Worker } from '../api'
+import { fetchJSON, type Job, type JobEvent, type ScheduledJob, type Worker } from '../api'
+
+const MAX_EVENTS_PER_JOB = 100
+
+interface JobWithEvents extends Job {
+  _progress?: string
+  _events?: JobEvent[]
+}
 
 interface State {
-  jobs: Job[]
+  jobs: JobWithEvents[]
   scheduledJobs: ScheduledJob[]
   workers: Worker[]
 }
@@ -14,8 +21,14 @@ type Action =
   | { type: 'JOB_STARTED'; data: { job_id: string; agent_name: string; input?: string; source?: string } }
   | { type: 'JOB_COMPLETED'; data: { job_id: string } }
   | { type: 'JOB_FAILED'; data: { job_id: string; error?: string } }
-  | { type: 'JOB_PROGRESS'; data: { job_id: string; status: string } }
+  | { type: 'JOB_PROGRESS'; data: { job_id: string; status: string; agent_name?: string } }
+  | { type: 'MESSAGE_CHUNK'; data: { job_id: string; type: string; text?: string; tool_name?: string; agent_name?: string } }
   | { type: 'REMOVE_SCHEDULED'; id: string }
+
+function pushEvent(job: JobWithEvents, event: JobEvent): JobEvent[] {
+  const events = [...(job._events || []), event]
+  return events.length > MAX_EVENTS_PER_JOB ? events.slice(-MAX_EVENTS_PER_JOB) : events
+}
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
@@ -37,7 +50,7 @@ function reducer(state: State, action: Action): State {
           ),
         }
       }
-      const newJob: Job = {
+      const newJob: JobWithEvents = {
         id: action.data.job_id,
         agent_name: action.data.agent_name,
         status: 'running',
@@ -49,6 +62,7 @@ function reducer(state: State, action: Action): State {
         created_at: new Date().toISOString(),
         started_at: new Date().toISOString(),
         completed_at: null,
+        _events: [],
       }
       return { ...state, jobs: [newJob, ...state.jobs] }
     }
@@ -66,7 +80,17 @@ function reducer(state: State, action: Action): State {
         ...state,
         jobs: state.jobs.map(j =>
           j.id === action.data.job_id
-            ? { ...j, status: 'failed' as const, error: action.data.error || null, completed_at: new Date().toISOString() }
+            ? {
+                ...j,
+                status: 'failed' as const,
+                error: action.data.error || null,
+                completed_at: new Date().toISOString(),
+                _events: pushEvent(j, {
+                  type: 'error',
+                  text: action.data.error,
+                  timestamp: new Date().toISOString(),
+                }),
+              }
             : j
         ),
       }
@@ -75,10 +99,44 @@ function reducer(state: State, action: Action): State {
         ...state,
         jobs: state.jobs.map(j =>
           j.id === action.data.job_id
-            ? { ...j, _progress: action.data.status } as Job
+            ? {
+                ...j,
+                _progress: action.data.status,
+                _events: pushEvent(j, {
+                  type: 'progress',
+                  text: action.data.status,
+                  agent_name: action.data.agent_name,
+                  timestamp: new Date().toISOString(),
+                }),
+              }
             : j
         ),
       }
+    case 'MESSAGE_CHUNK': {
+      const { job_id, type, text, tool_name, agent_name } = action.data
+      let eventType: JobEvent['type']
+      if (type === 'tool_call') eventType = 'tool_call'
+      else if (type === 'tool_result') eventType = 'tool_result'
+      else eventType = 'text'
+
+      return {
+        ...state,
+        jobs: state.jobs.map(j =>
+          j.id === job_id
+            ? {
+                ...j,
+                _events: pushEvent(j, {
+                  type: eventType,
+                  text: text ?? undefined,
+                  tool_name: tool_name ?? undefined,
+                  agent_name: agent_name ?? undefined,
+                  timestamp: new Date().toISOString(),
+                }),
+              }
+            : j
+        ),
+      }
+    }
     case 'REMOVE_SCHEDULED':
       return {
         ...state,
@@ -129,6 +187,12 @@ export function useActivityStream(enabled: boolean) {
     source.addEventListener('job.progress', (e) => {
       const { data } = JSON.parse(e.data)
       dispatch({ type: 'JOB_PROGRESS', data })
+    })
+    source.addEventListener('message.chunk', (e) => {
+      const { data } = JSON.parse(e.data)
+      if (data.job_id) {
+        dispatch({ type: 'MESSAGE_CHUNK', data })
+      }
     })
 
     return () => {

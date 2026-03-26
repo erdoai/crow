@@ -2,6 +2,7 @@ import SwiftUI
 
 enum MainTab: Hashable {
     case chats
+    case activity
     case agents
     case learnings
 }
@@ -20,6 +21,12 @@ struct MainView: View {
                     Label("Chats", systemImage: "bubble.left.and.bubble.right")
                 }
                 .tag(MainTab.chats)
+
+            ActivityView(api: api)
+                .tabItem {
+                    Label("Activity", systemImage: "waveform")
+                }
+                .tag(MainTab.activity)
 
             AgentsTab(api: api)
                 .tabItem {

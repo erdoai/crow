@@ -118,7 +118,8 @@ async def import_agent(request: Request):
         max_iterations=agent_data.get("max_iterations"),
         mcp_configs=agent_data.get("mcp_configs"),
     )
-    return {"status": "imported", "name": agent_data["name"], "scope": "user" if uid else "instance"}
+    scope = "user" if uid else "instance"
+    return {"status": "imported", "name": agent_data["name"], "scope": scope}
 
 
 # -- Share links --

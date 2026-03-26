@@ -5,6 +5,7 @@ import OnboardingPage from './pages/OnboardingPage'
 import DashboardPage from './pages/DashboardPage'
 import ChatPage from './pages/ChatPage'
 import SharedAgentPage from './pages/SharedAgentPage'
+import { Toaster } from './components/ui/sonner'
 
 function RequireAuth({ children, user, authEnabled }: {
   children: React.ReactNode
@@ -24,6 +25,8 @@ export default function App() {
   const authEnabled = user?.auth_enabled ?? true
 
   return (
+    <>
+    <Toaster />
     <Routes>
       <Route path="/login" element={
         user && user.id !== 'default'
@@ -55,5 +58,6 @@ export default function App() {
         <Navigate to={user ? "/dashboard" : "/login"} replace />
       } />
     </Routes>
+    </>
   )
 }

@@ -2,15 +2,17 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { fetchJSON, type Agent, type Conversation } from '../api'
 import { useCrowRuntime } from '../hooks/useCrowRuntime'
+import { useActivityStream } from '../hooks/useActivityStream'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
-import { Thread } from '@/components/assistant-ui/thread'
+import { Thread, ActivityProvider } from '@/components/assistant-ui/thread'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import { Activity, MessageSquarePlus } from 'lucide-react'
+import { MessageSquarePlus, ChevronDown, ChevronRight } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme-toggle'
-import ActivityPanel from '@/components/activity/ActivityPanel'
+import ActivitySection from '@/components/activity/ActivitySection'
+import { useJobNotifications } from '../hooks/useJobNotifications'
 import { cn } from '@/lib/utils'
 
 export default function ChatPage() {
@@ -19,7 +21,11 @@ export default function ChatPage() {
   const [agents, setAgents] = useState<Agent[]>([])
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [threadId, setThreadId] = useState<string | null>(null)
-  const [activityOpen, setActivityOpen] = useState(false)
+  const [agentsExpanded, setAgentsExpanded] = useState(true)
+  const [convosExpanded, setConvosExpanded] = useState(true)
+
+  // Always-on activity stream
+  const { jobs, scheduledJobs, workers, cancelScheduledJob } = useActivityStream(true)
 
   useEffect(() => {
     fetchJSON<Agent[]>('/agents').then(setAgents)
@@ -39,7 +45,10 @@ export default function ChatPage() {
     fetchJSON<Conversation[]>('/conversations').then(setConversations)
   }, [])
 
-  const { runtime } = useCrowRuntime(conversationId ?? null, threadId, refreshConversations)
+  const { runtime, currentActivity } = useCrowRuntime(conversationId ?? null, threadId, refreshConversations)
+
+  // Toast + browser notifications for job status changes
+  useJobNotifications(jobs, conversationId ?? null)
 
   async function startChatWithAgent(agentName: string) {
     const newThreadId = `chat-${agentName}-${Date.now()}`
@@ -67,6 +76,7 @@ export default function ChatPage() {
     <div className="flex h-screen">
       {/* Sidebar */}
       <aside className="w-72 min-w-72 bg-sidebar border-r border-sidebar-border flex flex-col">
+        {/* Header */}
         <div className="p-4 flex items-center justify-between border-b border-sidebar-border">
           <button
             onClick={() => navigate('/dashboard')}
@@ -76,61 +86,92 @@ export default function ChatPage() {
           </button>
           <div className="flex items-center">
             <ThemeToggle />
-            <Button variant="ghost" size="icon" onClick={() => setActivityOpen(o => !o)}>
-              <Activity className="h-4 w-4" />
-            </Button>
             <Button variant="ghost" size="icon" onClick={() => navigate('/chat')}>
               <MessageSquarePlus className="h-4 w-4" />
             </Button>
           </div>
         </div>
 
-        <div className="p-3">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">agents</p>
-          <div className="flex flex-wrap gap-1.5">
-            {agents.map(agent => (
-              <Badge
-                key={agent.name}
-                variant="outline"
-                className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
-                onClick={() => startChatWithAgent(agent.name)}
-              >
-                {agent.name}
-              </Badge>
-            ))}
-          </div>
+        {/* Agents section */}
+        <div>
+          <button
+            className="w-full px-3 py-2 flex items-center gap-1.5 hover:bg-sidebar-accent/50 transition-colors"
+            onClick={() => setAgentsExpanded(e => !e)}
+          >
+            {agentsExpanded
+              ? <ChevronDown className="h-3 w-3 text-muted-foreground" />
+              : <ChevronRight className="h-3 w-3 text-muted-foreground" />
+            }
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">agents</span>
+          </button>
+          {agentsExpanded && (
+            <div className="px-3 pb-2 flex flex-wrap gap-1.5">
+              {agents.map(agent => (
+                <Badge
+                  key={agent.name}
+                  variant="outline"
+                  className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
+                  onClick={() => startChatWithAgent(agent.name)}
+                >
+                  {agent.name}
+                </Badge>
+              ))}
+            </div>
+          )}
         </div>
 
         <Separator />
 
-        <div className="p-3 flex-1 overflow-hidden flex flex-col">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">conversations</p>
-          <ScrollArea className="flex-1">
-            <div className="flex flex-col gap-0.5">
-              {conversations.map(c => (
-                <button
-                  key={c.id}
-                  className={cn(
-                    'w-full text-left px-3 py-2 rounded-md text-sm transition-colors',
-                    c.id === conversationId
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
-                      : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
-                  )}
-                  onClick={() => navigate(`/chat/${c.id}`)}
-                >
-                  <div className="truncate">{c.gateway_thread_id}</div>
-                  {c.updated_at && (
-                    <div className="text-xs text-muted-foreground">
-                      {new Date(c.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                    </div>
-                  )}
-                </button>
-              ))}
-              {conversations.length === 0 && (
-                <p className="text-sm text-muted-foreground px-3 py-2">no conversations yet</p>
-              )}
-            </div>
-          </ScrollArea>
+        {/* Activity section */}
+        <ActivitySection
+          jobs={jobs}
+          scheduledJobs={scheduledJobs}
+          workers={workers}
+          cancelScheduledJob={cancelScheduledJob}
+        />
+
+        <Separator />
+
+        {/* Conversations section */}
+        <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+          <button
+            className="w-full px-3 py-2 flex items-center gap-1.5 hover:bg-sidebar-accent/50 transition-colors shrink-0"
+            onClick={() => setConvosExpanded(e => !e)}
+          >
+            {convosExpanded
+              ? <ChevronDown className="h-3 w-3 text-muted-foreground" />
+              : <ChevronRight className="h-3 w-3 text-muted-foreground" />
+            }
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">conversations</span>
+          </button>
+          {convosExpanded && (
+            <ScrollArea className="flex-1">
+              <div className="flex flex-col gap-0.5 px-1.5 pb-2">
+                {conversations.map(c => (
+                  <button
+                    key={c.id}
+                    className={cn(
+                      'w-full text-left px-3 py-2 rounded-md text-sm transition-colors',
+                      c.id === conversationId
+                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+                        : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
+                    )}
+                    onClick={() => navigate(`/chat/${c.id}`)}
+                  >
+                    <div className="truncate">{c.gateway_thread_id}</div>
+                    {c.updated_at && (
+                      <div className="text-xs text-muted-foreground">
+                        {new Date(c.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </div>
+                    )}
+                  </button>
+                ))}
+                {conversations.length === 0 && (
+                  <p className="text-sm text-muted-foreground px-3 py-2">no conversations yet</p>
+                )}
+              </div>
+            </ScrollArea>
+          )}
         </div>
       </aside>
 
@@ -143,7 +184,9 @@ export default function ChatPage() {
             </div>
             <div className="flex-1 min-h-0">
               <AssistantRuntimeProvider runtime={runtime}>
-                <Thread />
+                <ActivityProvider activity={currentActivity}>
+                  <Thread />
+                </ActivityProvider>
               </AssistantRuntimeProvider>
             </div>
           </>
@@ -154,8 +197,6 @@ export default function ChatPage() {
           </div>
         )}
       </main>
-
-      {activityOpen && <ActivityPanel onClose={() => setActivityOpen(false)} />}
     </div>
   )
 }

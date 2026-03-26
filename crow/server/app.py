@@ -33,6 +33,7 @@ from crow.server.routes import (
     health,
     jobs,
     messages,
+    push,
     scheduled_jobs,
     state,
     stream,
@@ -117,6 +118,7 @@ def create_app() -> FastAPI:
     app.include_router(state.router)
     app.include_router(scheduled_jobs.router)
     app.include_router(attachments.router)
+    app.include_router(push.router)
 
     # Auth + dashboard JSON APIs
     app.include_router(auth.api_router)  # /api/me
@@ -137,7 +139,10 @@ def create_app() -> FastAPI:
     # DB-stored custom dashboard views — serves files from the database
     @app.get("/dashboard/custom/{name}/{path:path}")
     async def serve_db_dashboard(name: str, path: str, request: Request):
-        """Serve dashboard files from DB. Checks user's own views + instance-level + share tokens."""
+        """Serve dashboard files from DB.
+
+        Checks user's own views + instance-level + share tokens.
+        """
         from crow.auth.dependencies import get_current_user
 
         db = request.app.state.db

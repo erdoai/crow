@@ -9,6 +9,7 @@ struct ChatView: View {
     @State private var input = ""
     @State private var loading = true
     @State private var waitingForReply = false
+    @State private var activityText: String?
     @State private var sseClient: SSEClient?
     @FocusState private var inputFocused: Bool
 
@@ -44,7 +45,7 @@ struct ChatView: View {
                                 .id(msg.id)
                         }
                         if waitingForReply {
-                            TypingIndicator()
+                            TypingIndicator(activityText: activityText)
                                 .id("typing")
                         }
                     }
@@ -140,19 +141,51 @@ struct ChatView: View {
     private func connectSSE() {
         guard let url = api.messageStream(conversationId: conversationId) else { return }
         let client = SSEClient { sseMessage in
-            guard let data = sseMessage.data.data(using: .utf8),
-                  let payload = try? JSONDecoder().decode(SSEPayload.self, from: data) else { return }
-            let msg = Message(
-                id: sseMessage.id ?? UUID().uuidString,
-                conversation_id: conversationId,
-                role: "assistant",
-                content: payload.text,
-                agent_name: payload.agent_name,
-                created_at: payload.timestamp
-            )
-            DispatchQueue.main.async {
-                waitingForReply = false
-                messages.append(msg)
+            guard let data = sseMessage.data.data(using: .utf8) else { return }
+
+            switch sseMessage.event {
+            case "chunk":
+                // Tool call or text chunk — update activity indicator
+                if let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    let type = payload["type"] as? String
+                    let toolName = payload["tool_name"] as? String
+                    DispatchQueue.main.async {
+                        if type == "tool_call", let name = toolName {
+                            activityText = "calling \(name)..."
+                        } else if type == "text" {
+                            activityText = "generating response..."
+                        }
+                    }
+                }
+
+            case "progress":
+                // Progress update — show status text
+                if let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let status = payload["status"] as? String {
+                    DispatchQueue.main.async {
+                        activityText = status
+                    }
+                }
+
+            case "message":
+                // Final message
+                guard let payload = try? JSONDecoder().decode(SSEMessagePayload.self, from: data) else { return }
+                let msg = Message(
+                    id: sseMessage.id ?? UUID().uuidString,
+                    conversation_id: conversationId,
+                    role: "assistant",
+                    content: payload.text,
+                    agent_name: payload.agent_name,
+                    created_at: payload.timestamp
+                )
+                DispatchQueue.main.async {
+                    waitingForReply = false
+                    activityText = nil
+                    messages.append(msg)
+                }
+
+            default:
+                break
             }
         }
         client.connect(url: url, sessionToken: api.server.sessionToken)
@@ -160,7 +193,7 @@ struct ChatView: View {
     }
 }
 
-private struct SSEPayload: Decodable {
+private struct SSEMessagePayload: Decodable {
     let text: String
     let agent_name: String?
     let timestamp: String
@@ -169,21 +202,26 @@ private struct SSEPayload: Decodable {
 // MARK: - Typing Indicator
 
 struct TypingIndicator: View {
-    @State private var phase = 0.0
+    var activityText: String?
+    @State private var isPulsing = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
-            HStack(spacing: 5) {
-                ForEach(0..<3) { i in
-                    Circle()
-                        .fill(Color(.systemGray3))
-                        .frame(width: 8, height: 8)
-                        .scaleEffect(dotScale(for: i))
-                        .opacity(dotOpacity(for: i))
-                }
+            HStack(spacing: 8) {
+                // Pulse indicator
+                Circle()
+                    .fill(Color.accentColor)
+                    .frame(width: 8, height: 8)
+                    .scaleEffect(isPulsing ? 1.3 : 0.8)
+                    .opacity(isPulsing ? 1.0 : 0.5)
+
+                Text(activityText ?? "thinking...")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 14)
+            .padding(.vertical, 12)
             .background(Color(.systemGray6))
             .clipShape(RoundedRectangle(cornerRadius: 18))
 
@@ -192,22 +230,10 @@ struct TypingIndicator: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 2)
         .onAppear {
-            withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: false)) {
-                phase = 1.0
+            withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
+                isPulsing = true
             }
         }
-    }
-
-    private func dotScale(for index: Int) -> Double {
-        let offset = Double(index) * 0.33
-        let t = (phase + offset).truncatingRemainder(dividingBy: 1.0)
-        return 0.6 + 0.4 * sin(t * .pi)
-    }
-
-    private func dotOpacity(for index: Int) -> Double {
-        let offset = Double(index) * 0.33
-        let t = (phase + offset).truncatingRemainder(dividingBy: 1.0)
-        return 0.4 + 0.6 * sin(t * .pi)
     }
 }
 

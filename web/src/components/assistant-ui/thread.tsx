@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, createContext, useContext } from 'react'
 import {
   ThreadPrimitive,
   ComposerPrimitive,
@@ -10,6 +10,14 @@ import { MarkdownTextPrimitive } from '@assistant-ui/react-markdown'
 import { ArrowUp, ArrowDown, Cpu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import type { CurrentActivity } from '@/hooks/useCrowRuntime'
+
+// Context to pass currentActivity into the thread tree
+const ActivityContext = createContext<CurrentActivity | null>(null)
+
+export function ActivityProvider({ activity, children }: { activity: CurrentActivity | null; children: React.ReactNode }) {
+  return <ActivityContext.Provider value={activity}>{children}</ActivityContext.Provider>
+}
 
 export function Thread() {
   return (
@@ -132,6 +140,7 @@ function Composer() {
 
 function TypingIndicator() {
   const runtime = useThreadRuntime()
+  const activity = useContext(ActivityContext)
   const [isRunning, setIsRunning] = useState(false)
 
   useEffect(() => {
@@ -144,18 +153,31 @@ function TypingIndicator() {
 
   if (!isRunning) return null
 
+  const activityText = activity
+    ? activity.type === 'tool'
+      ? `calling ${activity.text}...`
+      : activity.type === 'progress'
+        ? activity.text
+        : activity.text
+    : 'thinking...'
+
+  const agentName = activity?.agentName
+
   return (
     <div className="flex flex-col max-w-[70%] self-start items-start">
       <div className="flex items-center gap-1 text-xs text-muted-foreground mb-0.5 pl-3">
         <Cpu className="h-3 w-3" />
-        thinking...
+        {agentName || 'agent'}
       </div>
-      <div className="px-4 py-3 rounded-2xl rounded-bl-sm bg-card border border-border">
-        <div className="flex gap-1">
-          <span className="w-2 h-2 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:0ms]" />
-          <span className="w-2 h-2 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:150ms]" />
-          <span className="w-2 h-2 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:300ms]" />
-        </div>
+      <div className="px-4 py-2.5 rounded-2xl rounded-bl-sm bg-card border border-border flex items-center gap-2">
+        {/* Pulse ring */}
+        <span className="relative flex h-2 w-2 shrink-0">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
+        </span>
+        <span className="text-xs text-muted-foreground">
+          {activityText}
+        </span>
       </div>
     </div>
   )
