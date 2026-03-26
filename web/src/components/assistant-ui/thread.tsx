@@ -136,10 +136,7 @@ function TypingIndicator() {
 
   useEffect(() => {
     const update = () => {
-      const state = runtime.getState()
-      const msgs = state.messages
-      const lastIsUser = msgs.length > 0 && msgs[msgs.length - 1].role === 'user'
-      setIsRunning(state.isRunning || lastIsUser)
+      setIsRunning(runtime.getState().isRunning)
     }
     update()
     return runtime.subscribe(update)
