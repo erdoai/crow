@@ -627,9 +627,9 @@ async def _handle_execute_code(inp: dict, ctx: ToolContext) -> str:
     },
 )
 async def _handle_browse_web(inp: dict, ctx: ToolContext) -> str:
-    api_key = os.environ.get("BROWSER_USE_API_KEY")
+    api_key = os.environ.get("BROWSERUSE_API_KEY")
     if not api_key:
-        return "BROWSER_USE_API_KEY not set in environment"
+        return "BROWSERUSE_API_KEY not set in environment"
 
     base_url = "https://api.browser-use.com/api/v2"
     headers = {
