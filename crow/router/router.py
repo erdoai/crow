@@ -1,4 +1,4 @@
-"""Routes inbound messages through the PA agent to create jobs."""
+"""Routes inbound messages to agents and creates jobs."""
 
 import logging
 
@@ -16,7 +16,7 @@ class Router:
         bus.subscribe(MESSAGE_INBOUND, self.route)
 
     async def route(self, event: Event) -> None:
-        """All inbound messages go to the PA agent, which decides what to do."""
+        """Route message to the requested, current, or default (PA) agent."""
         gateway = event.data["gateway"]
         gateway_thread_id = event.data["gateway_thread_id"]
         text = event.data["text"]
@@ -46,8 +46,13 @@ class Router:
                 data=att["data"],
             )
 
-        # Route to specific agent if requested, otherwise PA decides
-        agent_name = event.data.get("agent", "pa")
+        # Route to specific agent if requested, continue with the
+        # conversation's current agent, or fall back to PA.
+        agent_name = event.data.get("agent")
+        if not agent_name:
+            agent_name = await self.db.last_agent_for_conversation(
+                conversation["id"]
+            ) or "pa"
 
         job_id = await self.db.create_job(
             agent_name=agent_name,

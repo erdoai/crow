@@ -135,6 +135,16 @@ class Database:
 
     # -- Jobs --
 
+    async def last_agent_for_conversation(self, conversation_id: str) -> str | None:
+        """Return the agent_name from the most recent job in a conversation."""
+        row = await self._pool.fetchrow(
+            """SELECT agent_name FROM jobs
+               WHERE conversation_id = $1
+               ORDER BY created_at DESC LIMIT 1""",
+            conversation_id,
+        )
+        return row["agent_name"] if row else None
+
     async def create_job(
         self,
         agent_name: str,
