@@ -13,11 +13,12 @@
 		A10000004 /* CrowAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000004 /* CrowAPI.swift */; };
 		A10000005 /* SSEClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000005 /* SSEClient.swift */; };
 		A10000006 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000006 /* ChatView.swift */; };
-		A1000000A /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000B /* MainView.swift */; };
 		A10000008 /* ServerListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000008 /* ServerListView.swift */; };
 		A10000009 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000009 /* Assets.xcassets */; };
+		A1000000A /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000B /* MainView.swift */; };
 		A1000000B /* AgentDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000C /* AgentDetailView.swift */; };
 		A1000000C /* LearningsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000D /* LearningsView.swift */; };
+		A1000000D /* ActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000E /* ActivityView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,11 +29,12 @@
 		A20000005 /* SSEClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSEClient.swift; sourceTree = "<group>"; };
 		A20000006 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		A20000008 /* ServerListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerListView.swift; sourceTree = "<group>"; };
+		A20000009 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A2000000A /* Crow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Crow.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A2000000B /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
 		A2000000C /* AgentDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDetailView.swift; sourceTree = "<group>"; };
 		A2000000D /* LearningsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningsView.swift; sourceTree = "<group>"; };
-		A20000009 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		A2000000A /* Crow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Crow.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A2000000E /* ActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -78,6 +80,7 @@
 		A40000004 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				A2000000E /* ActivityView.swift */,
 				A2000000C /* AgentDetailView.swift */,
 				A20000006 /* ChatView.swift */,
 				A2000000D /* LearningsView.swift */,
@@ -183,6 +186,7 @@
 				A1000000A /* MainView.swift in Sources */,
 				A1000000B /* AgentDetailView.swift in Sources */,
 				A1000000C /* LearningsView.swift in Sources */,
+				A1000000D /* ActivityView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
