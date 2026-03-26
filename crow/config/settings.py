@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     # Worker auth
     worker_api_key: str = "changeme"
 
-    # Embeddings
+    # Embeddings (OpenAI API for vector embeddings)
+    openai_api_key: str = ""
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536

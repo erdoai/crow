@@ -12,14 +12,14 @@ logger = logging.getLogger(__name__)
 
 async def generate_embedding(text: str, settings: Settings) -> list[float] | None:
     """Generate embedding via OpenAI-compatible API."""
-    if not settings.anthropic_api_key:
+    if not settings.openai_api_key:
         return None
 
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 "https://api.openai.com/v1/embeddings",
-                headers={"Authorization": f"Bearer {settings.anthropic_api_key}"},
+                headers={"Authorization": f"Bearer {settings.openai_api_key}"},
                 json={"model": settings.embedding_model, "input": text},
                 timeout=10,
             )

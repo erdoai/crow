@@ -431,6 +431,7 @@ class Database:
         parent_agent: str | None = None,
         max_iterations: int | None = None,
         mcp_configs: dict | None = None,
+        mode: str = "chat",
     ) -> None:
         import json as _json
 
@@ -449,11 +450,14 @@ class Database:
             """INSERT INTO agent_defs
                (name, description, prompt_template, tools,
                 mcp_servers, knowledge_areas, user_id,
-                parent_agent, max_iterations, mcp_configs, updated_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11)""",
+                parent_agent, max_iterations, mcp_configs,
+                mode, updated_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
+                       $10::jsonb, $11, $12)""",
             name, description, prompt_template,
             tools or [], mcp_servers or [], knowledge_areas or [],
-            user_id, parent_agent, max_iterations, mcp_configs_json, now,
+            user_id, parent_agent, max_iterations, mcp_configs_json,
+            mode, now,
         )
 
     async def get_agent_def(self, name: str, user_id: str | None = None) -> dict | None:

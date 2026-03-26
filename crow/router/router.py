@@ -54,7 +54,14 @@ class Router:
                 conversation["id"]
             ) or "pa"
 
-        mode = event.data.get("mode", "chat")
+        # Resolve job mode: explicit request > agent default > chat
+        mode = event.data.get("mode")
+        if not mode:
+            agent_def = await self.db.get_agent_def(
+                agent_name, user_id=user_id
+            )
+            mode = agent_def.get("mode", "chat") if agent_def else "chat"
+
         job_id = await self.db.create_job(
             agent_name=agent_name,
             input_text=text,

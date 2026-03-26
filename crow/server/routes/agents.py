@@ -134,6 +134,7 @@ async def import_agent(request: Request):
         parent_agent=agent_data.get("parent_agent"),
         max_iterations=agent_data.get("max_iterations"),
         mcp_configs=agent_data.get("mcp_configs"),
+        mode=agent_data.get("mode", "chat"),
     )
     scope = "user" if uid else "instance"
     return {"status": "imported", "name": agent_data["name"], "scope": scope}

@@ -36,6 +36,8 @@ def agent_to_markdown(agent: dict) -> str:
         frontmatter["parent"] = agent["parent_agent"]
     if agent.get("max_iterations"):
         frontmatter["max_iterations"] = agent["max_iterations"]
+    if agent.get("mode") and agent["mode"] != "chat":
+        frontmatter["mode"] = agent["mode"]
 
     fm_str = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False).strip()
     return f"---\n{fm_str}\n---\n\n{prompt_content}"
@@ -72,4 +74,5 @@ def markdown_to_agent(content: str) -> dict:
         "knowledge_areas": frontmatter.get("knowledge_areas", []),
         "parent_agent": frontmatter.get("parent"),
         "max_iterations": frontmatter.get("max_iterations"),
+        "mode": frontmatter.get("mode", "chat"),
     }
