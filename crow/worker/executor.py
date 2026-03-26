@@ -240,6 +240,7 @@ async def _handle_knowledge_search(inp: dict, ctx: ToolContext) -> str:
         }
         resp = await client.get(
             f"{ctx.server_url}/agents/{ctx.job['agent_name']}/knowledge",
+            headers=ctx.headers,
             params=params,
             timeout=10,
         )
