@@ -102,14 +102,51 @@ export function useCrowRuntime(
   }, [conversationId])
 
   const convertMessage = useCallback(
-    (msg: Message): ThreadMessageLike => ({
-      id: msg.id,
-      role: msg.role,
-      content: [{ type: 'text', text: msg.content }],
-      ...(msg.role === 'assistant' && msg.agent_name
-        ? { metadata: { custom: { agentName: msg.agent_name } } }
-        : {}),
-    }),
+    (msg: Message): ThreadMessageLike => {
+      let content: ThreadMessageLike['content']
+
+      // Parse structured content (JSON array of parts) or plain text
+      if (msg.role === 'assistant' && msg.content.startsWith('[')) {
+        try {
+          type Part = { type: string; text?: string; name?: string; input?: Record<string, unknown>; result?: string }
+          const parts = JSON.parse(msg.content) as Part[]
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const built: any[] = []
+          // Merge consecutive tool_call + tool_result into one tool-call part
+          for (let i = 0; i < parts.length; i++) {
+            const p = parts[i]
+            if (p.type === 'tool_call') {
+              const next = parts[i + 1]
+              const result = next?.type === 'tool_result' ? next.result : undefined
+              if (next?.type === 'tool_result') i++
+              built.push({
+                type: 'tool-call',
+                toolCallId: `${p.name}-${i}`,
+                toolName: p.name!,
+                args: p.input ?? {},
+                result,
+              })
+            } else {
+              built.push({ type: 'text', text: p.text ?? '' })
+            }
+          }
+          content = built
+        } catch {
+          content = [{ type: 'text', text: msg.content }]
+        }
+      } else {
+        content = [{ type: 'text', text: msg.content }]
+      }
+
+      return {
+        id: msg.id,
+        role: msg.role,
+        content,
+        ...(msg.role === 'assistant' && msg.agent_name
+          ? { metadata: { custom: { agentName: msg.agent_name } } }
+          : {}),
+      }
+    },
     [],
   )
 

@@ -920,7 +920,7 @@ async def run_agent(
         )
         total_tokens = 0
         max_iterations = agent.get("max_iterations") or 10
-        tool_log: list[dict] = []  # track tool calls + results for output
+        content_parts: list[dict] = []  # chronological content parts
 
         for _ in range(max_iterations):
             kwargs: dict = {
@@ -990,20 +990,10 @@ async def run_agent(
                         block["input"] = {}
 
             if stop_reason == "end_turn":
-                text_parts = [
-                    b["text"] for b in collected_content if b["type"] == "text"
-                ]
-                output_text = "\n".join(text_parts) or "(no response)"
-
-                # Prepend tool call log if any tools were used
-                if tool_log:
-                    tool_section = ""
-                    for t in tool_log:
-                        input_str = json.dumps(t["input"], indent=2) if isinstance(t["input"], dict) else str(t["input"])
-                        tool_section += f"\n<details>\n<summary>🔧 {t['name']}</summary>\n\n**Input:**\n```json\n{input_str}\n```\n\n**Result:**\n```\n{t['result']}\n```\n</details>\n"
-                    output_text = tool_section + "\n" + output_text
-
-                return output_text, total_tokens
+                for b in collected_content:
+                    if b["type"] == "text" and b["text"].strip():
+                        content_parts.append({"type": "text", "text": b["text"]})
+                return json.dumps(content_parts) if content_parts else "(no response)", total_tokens
 
             if stop_reason == "tool_use":
                 api_messages.append({
@@ -1014,21 +1004,6 @@ async def run_agent(
                 tool_blocks = [
                     b for b in collected_content if b["type"] == "tool_use"
                 ]
-
-                # Notify frontend of tool calls via chunk endpoint
-                if stream_chunks:
-                    async with httpx.AsyncClient() as hc:
-                        for tb in tool_blocks:
-                            await hc.post(
-                                chunk_url,
-                                headers=chunk_headers,
-                                json={
-                                    "type": "tool_call",
-                                    "tool_name": tb["name"],
-                                    "agent_name": job.get("agent_name"),
-                                },
-                                timeout=5,
-                            )
 
                 async def _exec_tool(block):
                     tool_name = block["name"]
@@ -1064,27 +1039,35 @@ async def run_agent(
                     *[_exec_tool(b) for b in tool_blocks]
                 )
 
-                # Log tool calls + results and stream them
+                # Add all parts chronologically: text, tool calls, tool results
+                for b in collected_content:
+                    if b["type"] == "text" and b["text"].strip():
+                        content_parts.append({"type": "text", "text": b["text"]})
+
                 for tb, tr in zip(tool_blocks, tool_results):
-                    result_preview = (tr["content"] or "")[:500]
-                    tool_log.append({
+                    content_parts.append({
+                        "type": "tool_call",
                         "name": tb["name"],
                         "input": tb["input"],
-                        "result": result_preview,
                     })
+                    content_parts.append({
+                        "type": "tool_result",
+                        "name": tb["name"],
+                        "result": (tr["content"] or "")[:500],
+                    })
+
+                    # Stream tool call + result to frontend
                     if stream_chunks:
                         async with httpx.AsyncClient() as hc:
-                            await hc.post(
-                                chunk_url,
-                                headers=chunk_headers,
-                                json={
-                                    "type": "tool_result",
-                                    "tool_name": tb["name"],
-                                    "text": result_preview,
-                                    "agent_name": job.get("agent_name"),
-                                },
-                                timeout=5,
-                            )
+                            await hc.post(chunk_url, headers=chunk_headers, json={
+                                "type": "tool_call", "tool_name": tb["name"],
+                                "agent_name": job.get("agent_name"),
+                            }, timeout=5)
+                            await hc.post(chunk_url, headers=chunk_headers, json={
+                                "type": "tool_result", "tool_name": tb["name"],
+                                "text": (tr["content"] or "")[:200],
+                                "agent_name": job.get("agent_name"),
+                            }, timeout=5)
 
                 api_messages.append(
                     {"role": "user", "content": tool_results}

@@ -63,6 +63,7 @@ function AssistantMessage() {
         <MessagePrimitive.Content
           components={{
             Text: AssistantMessageText,
+            tools: { Fallback: ToolCallDisplay },
           }}
         />
       </div>
@@ -86,6 +87,25 @@ function AgentLabel() {
 
 function AssistantMessageText() {
   return <MarkdownTextPrimitive />
+}
+
+function ToolCallDisplay({ toolName, args, result }: { toolName: string; args: Record<string, unknown>; result?: unknown }) {
+  return (
+    <details className="my-1.5 rounded-lg border border-border bg-muted/30 text-xs">
+      <summary className="px-3 py-1.5 cursor-pointer text-muted-foreground flex items-center gap-1.5">
+        <span>{result !== undefined ? '✓' : '⏳'}</span>
+        <span className="font-medium">{toolName}</span>
+        {args && Object.keys(args).length > 0 && (
+          <span className="opacity-50 truncate max-w-[200px]">{JSON.stringify(args)}</span>
+        )}
+      </summary>
+      {result !== undefined && (
+        <pre className="px-3 py-2 overflow-x-auto whitespace-pre-wrap text-muted-foreground border-t border-border">
+          {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
+        </pre>
+      )}
+    </details>
+  )
 }
 
 function Composer() {
