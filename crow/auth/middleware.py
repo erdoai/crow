@@ -38,10 +38,10 @@ PUBLIC_PREFIXES: tuple[str, ...] = (
 
 # Path prefixes that accept worker-key authentication.
 WORKER_KEY_PREFIXES: tuple[str, ...] = (
-    "/workers/",
-    "/jobs/",
-    "/agents/",
-    "/scheduled-jobs/",
+    "/workers",
+    "/jobs",
+    "/agents",
+    "/scheduled-jobs",
 )
 
 
