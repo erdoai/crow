@@ -8,8 +8,9 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import { MessageSquarePlus } from 'lucide-react'
+import { Activity, MessageSquarePlus } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme-toggle'
+import ActivityPanel from '@/components/activity/ActivityPanel'
 import { cn } from '@/lib/utils'
 
 export default function ChatPage() {
@@ -18,6 +19,7 @@ export default function ChatPage() {
   const [agents, setAgents] = useState<Agent[]>([])
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [threadId, setThreadId] = useState<string | null>(null)
+  const [activityOpen, setActivityOpen] = useState(false)
 
   useEffect(() => {
     fetchJSON<Agent[]>('/agents').then(setAgents)
@@ -74,6 +76,9 @@ export default function ChatPage() {
           </button>
           <div className="flex items-center">
             <ThemeToggle />
+            <Button variant="ghost" size="icon" onClick={() => setActivityOpen(o => !o)}>
+              <Activity className="h-4 w-4" />
+            </Button>
             <Button variant="ghost" size="icon" onClick={() => navigate('/chat')}>
               <MessageSquarePlus className="h-4 w-4" />
             </Button>
@@ -149,6 +154,8 @@ export default function ChatPage() {
           </div>
         )}
       </main>
+
+      {activityOpen && <ActivityPanel onClose={() => setActivityOpen(false)} />}
     </div>
   )
 }

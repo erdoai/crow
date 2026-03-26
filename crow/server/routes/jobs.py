@@ -4,7 +4,16 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel
 
 from crow.auth.dependencies import get_current_user
-from crow.events.types import JOB_PROGRESS, MESSAGE_CHUNK, MESSAGE_RESPONSE, STATE_UPDATED, Event
+from crow.events.types import (
+    JOB_COMPLETED,
+    JOB_FAILED,
+    JOB_PROGRESS,
+    JOB_STARTED,
+    MESSAGE_CHUNK,
+    MESSAGE_RESPONSE,
+    STATE_UPDATED,
+    Event,
+)
 
 router = APIRouter(prefix="/jobs")
 
@@ -63,6 +72,17 @@ async def claim_next_job(request: Request, x_worker_key: str = Header()):
     job = await db.claim_next_job(worker_id)
     if not job:
         return None
+
+    bus = request.app.state.bus
+    await bus.publish(Event(
+        type=JOB_STARTED,
+        data={
+            "job_id": job["id"],
+            "agent_name": job["agent_name"],
+            "conversation_id": job.get("conversation_id"),
+            "input": job.get("input", ""),
+        },
+    ))
 
     # Load agent definition from DB (scoped to the user who created the conversation)
     job_user_id = None
@@ -259,10 +279,16 @@ async def report_result(
     """Worker reports job completion."""
     _check_worker_key(request, x_worker_key)
     db = request.app.state.db
+    bus = request.app.state.bus
     await db.complete_job(job_id, result.output, result.tokens_used)
 
     # If there's a conversation, save the response and notify gateways
     job = await db.get_job(job_id)
+
+    await bus.publish(Event(
+        type=JOB_COMPLETED,
+        data={"job_id": job_id, "agent_name": job["agent_name"] if job else "unknown"},
+    ))
     if job and job["conversation_id"]:
         msg_id = await db.insert_message(
             conversation_id=job["conversation_id"],
@@ -352,6 +378,13 @@ async def report_error(
     _check_worker_key(request, x_worker_key)
     db = request.app.state.db
     await db.fail_job(job_id, err.error)
+
+    bus = request.app.state.bus
+    await bus.publish(Event(
+        type=JOB_FAILED,
+        data={"job_id": job_id, "error": err.error},
+    ))
+
     return {"status": "ok"}
 
 

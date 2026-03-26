@@ -76,3 +76,33 @@ export interface DashboardData {
   display_name: string
   auth_enabled: boolean
 }
+
+export interface Job {
+  id: string
+  agent_name: string
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  input: string
+  output: string | null
+  worker_id: string | null
+  error: string | null
+  created_at: string
+  started_at: string | null
+  completed_at: string | null
+}
+
+export interface ScheduledJob {
+  id: string
+  agent_name: string
+  input: string
+  cron: string | null
+  run_at: string
+  status: string
+  created_at: string
+}
+
+export interface Worker {
+  id: string
+  name: string | null
+  last_heartbeat: string
+  status: string
+}
