@@ -40,6 +40,12 @@ async def stream_conversation(conversation_id: str, request: Request):
                     break
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    # Background jobs: suppress chunks and progress from
+                    # conversation stream (they go to activity sidebar via WS).
+                    # MESSAGE_RESPONSE still goes through (final result + post_update).
+                    is_bg = event.data.get("mode") == "background"
+                    if is_bg and event.type in (MESSAGE_CHUNK, JOB_PROGRESS):
+                        continue
                     if event.type == MESSAGE_CHUNK:
                         data = json.dumps({
                             "type": event.data.get("type", "text"),
