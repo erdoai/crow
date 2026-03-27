@@ -785,6 +785,21 @@ async def _handle_store_list(inp: dict, ctx: ToolContext) -> str:
         return resp.text
 
 
+def _collect_sandbox_envs() -> dict[str, str]:
+    """Collect API keys and credentials to forward to the E2B sandbox."""
+    envs = {}
+    for key, value in os.environ.items():
+        if not value:
+            continue
+        if key == "E2B_API_KEY":
+            continue
+        if key.startswith("CROW_") and ("API_KEY" in key or "API_ID" in key):
+            envs[key.removeprefix("CROW_")] = value
+        elif "API_KEY" in key or "APP_ID" in key or "API_ID" in key:
+            envs[key] = value
+    return envs
+
+
 @builtin_tool(
     name="execute_code",
     description=(
@@ -812,24 +827,6 @@ async def _handle_store_list(inp: dict, ctx: ToolContext) -> str:
         "required": ["code"],
     },
 )
-def _collect_sandbox_envs() -> dict[str, str]:
-    """Collect API keys and credentials to forward to the E2B sandbox."""
-    envs = {}
-    # Forward anything that looks like credentials
-    for key, value in os.environ.items():
-        if not value:
-            continue
-        # Skip E2B's own key (used by the client, not the sandbox)
-        if key == "E2B_API_KEY":
-            continue
-        # Forward API keys, app IDs, and secrets
-        if key.startswith("CROW_") and ("API_KEY" in key or "API_ID" in key):
-            envs[key.removeprefix("CROW_")] = value
-        elif "API_KEY" in key or "APP_ID" in key or "API_ID" in key:
-            envs[key] = value
-    return envs
-
-
 async def _handle_execute_code(inp: dict, ctx: ToolContext) -> str:
     try:
         from e2b_code_interpreter import AsyncSandbox
