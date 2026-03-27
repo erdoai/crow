@@ -1,13 +1,13 @@
-"""Agent executor — runs a single agent job using the Anthropic API."""
+"""Agent executor — runs a single agent job via LLM with tool support."""
 
 import asyncio
 import json
 import logging
 
-import anthropic
 import httpx
 
 from crow.config.settings import Settings
+from crow.llm.client import StreamEvent, call_llm_with_fallback
 from crow.worker.context import build_api_messages, inject_store_state
 from crow.worker.mcp_client import MCPConnection, connect_mcp
 from crow.worker.prompt import render_prompt
@@ -148,80 +148,41 @@ async def run_agent(
                         "Failed to connect MCP server: %s", cfg["name"]
                     )
 
-        # Call Claude
-        client = anthropic.AsyncAnthropic(
-            api_key=settings.anthropic_api_key
-        )
+        # LLM call loop with streaming and fallback
         total_tokens = 0
         max_iterations = agent.get("max_iterations") or 10
-        content_parts: list[dict] = []  # chronological content parts
+        content_parts: list[dict] = []
+
+        chunk_headers = {"x-worker-key": worker_key}
+        chunk_url = f"{server_url}/jobs/{job.get('id')}/chunk"
+        stream_chunks = job.get("conversation_id") is not None
 
         for _ in range(max_iterations):
-            kwargs: dict = {
-                "model": settings.anthropic_model,
-                "max_tokens": 4096,
-                "system": system_prompt,
-                "messages": api_messages,
-            }
-            if tools:
-                kwargs["tools"] = tools
+            # Stream text chunks to the frontend
+            async def on_stream_event(event: StreamEvent):
+                if event.type == "text_delta" and event.text and stream_chunks:
+                    async with httpx.AsyncClient() as hc:
+                        await hc.post(
+                            chunk_url,
+                            headers=chunk_headers,
+                            json={
+                                "text": event.text,
+                                "agent_name": job.get("agent_name"),
+                            },
+                            timeout=5,
+                        )
 
-            # Use streaming for the Claude API call
-            chunk_headers = {"x-worker-key": worker_key}
-            chunk_url = f"{server_url}/jobs/{job.get('id')}/chunk"
-            stream_chunks = job.get("conversation_id") is not None
+            response = await call_llm_with_fallback(
+                settings,
+                system=system_prompt,
+                messages=api_messages,
+                tools=tools or None,
+                on_event=on_stream_event,
+            )
 
-            collected_content = []
-            stop_reason = None
-            usage_input = 0
-            usage_output = 0
-
-            async with client.messages.stream(**kwargs) as stream:
-                async with httpx.AsyncClient() as hc:
-                    async for event in stream:
-                        if event.type == "content_block_start":
-                            if event.content_block.type == "text":
-                                collected_content.append({
-                                    "type": "text",
-                                    "text": "",
-                                })
-                            elif event.content_block.type == "tool_use":
-                                collected_content.append({
-                                    "type": "tool_use",
-                                    "id": event.content_block.id,
-                                    "name": event.content_block.name,
-                                    "input": "",
-                                })
-                        elif event.type == "content_block_delta":
-                            if event.delta.type == "text_delta":
-                                collected_content[-1]["text"] += event.delta.text
-                                if stream_chunks:
-                                    await hc.post(
-                                        chunk_url,
-                                        headers=chunk_headers,
-                                        json={
-                                            "text": event.delta.text,
-                                            "agent_name": job.get("agent_name"),
-                                        },
-                                        timeout=5,
-                                    )
-                            elif event.delta.type == "input_json_delta":
-                                collected_content[-1]["input"] += event.delta.partial_json
-                        elif event.type == "message_delta":
-                            stop_reason = event.delta.stop_reason
-                            usage_output += event.usage.output_tokens
-                        elif event.type == "message_start":
-                            usage_input += event.message.usage.input_tokens
-
-            total_tokens += usage_input + usage_output
-
-            # Parse tool_use inputs from accumulated JSON strings
-            for block in collected_content:
-                if block["type"] == "tool_use" and isinstance(block["input"], str):
-                    try:
-                        block["input"] = json.loads(block["input"]) if block["input"] else {}
-                    except json.JSONDecodeError:
-                        block["input"] = {}
+            collected_content = response.content
+            stop_reason = response.stop_reason
+            total_tokens += response.usage_input + response.usage_output
 
             if stop_reason == "end_turn":
                 for b in collected_content:

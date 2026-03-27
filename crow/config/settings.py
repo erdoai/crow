@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-4-20250514"
 
+    # Fallback model (used when primary model is overloaded)
+    fallback_model: str = "gpt-5.4"
+
     # External systems
     devbot_url: str = "http://localhost:8484"
     pilot_url: str = "http://localhost:9721"
