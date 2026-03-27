@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import type { Job, JobEvent } from '../../api'
-import { Circle, CircleCheck, CircleX, Clock } from 'lucide-react'
+import { Circle, CircleCheck, CircleX, Clock, MessageSquare } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import JobDetail from './JobDetail'
 
@@ -21,6 +22,22 @@ function Elapsed({ since }: { since: string }) {
   return <span>{d}d {h % 24}h</span>
 }
 
+function formatDuration(startedAt: string, completedAt: string): string {
+  const s = Math.floor((new Date(completedAt).getTime() - new Date(startedAt).getTime()) / 1000)
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`
+  const h = Math.floor(s / 3600)
+  return `${h}h ${Math.floor((s % 3600) / 60)}m`
+}
+
+function timeAgo(iso: string): string {
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  if (s < 60) return 'just now'
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+  return `${Math.floor(s / 86400)}d ago`
+}
+
 const statusIcon: Record<string, React.ReactNode> = {
   pending: <Clock className="h-3 w-3 text-muted-foreground" />,
   running: <Circle className="h-3 w-3 text-green-500 fill-green-500" />,
@@ -32,6 +49,7 @@ type JobWithMeta = Job & { _progress?: string; _events?: JobEvent[] }
 
 export default function JobList({ jobs }: { jobs: JobWithMeta[] }) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const navigate = useNavigate()
 
   // Pin active jobs to top, then recent by time
   const sorted = [...jobs].sort((a, b) => {
@@ -49,6 +67,7 @@ export default function JobList({ jobs }: { jobs: JobWithMeta[] }) {
     <div className="flex flex-col">
       {sorted.map(job => {
         const isExpanded = expandedId === job.id
+        const hasConversation = !!job.conversation_id
         return (
           <div key={job.id} className="border-b last:border-0">
             <div
@@ -72,7 +91,15 @@ export default function JobList({ jobs }: { jobs: JobWithMeta[] }) {
                   </span>
                 )}
                 {job.status === 'completed' && (
-                  <span className="text-xs text-muted-foreground">done</span>
+                  <span
+                    className="text-xs text-muted-foreground"
+                    title={job.completed_at ? new Date(job.completed_at).toLocaleString() : undefined}
+                  >
+                    {job.started_at && job.completed_at
+                      ? `${formatDuration(job.started_at, job.completed_at)} · ${timeAgo(job.completed_at)}`
+                      : 'done'
+                    }
+                  </span>
                 )}
                 {job.status === 'failed' && (
                   <span className="text-xs text-destructive">failed</span>
@@ -94,7 +121,23 @@ export default function JobList({ jobs }: { jobs: JobWithMeta[] }) {
               )}
             >
               <div className="overflow-hidden bg-sidebar-accent/20">
-                {isExpanded && <JobDetail events={job._events || []} output={job.output} status={job.status} />}
+                {isExpanded && (
+                  <>
+                    <JobDetail events={job._events || []} output={job.output} status={job.status} />
+                    {hasConversation && (
+                      <button
+                        className="w-full px-3 py-1.5 text-[10px] text-primary hover:underline flex items-center gap-1 border-t border-border/50"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          navigate(`/chat/${job.conversation_id}`)
+                        }}
+                      >
+                        <MessageSquare className="h-2.5 w-2.5" />
+                        open conversation
+                      </button>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           </div>

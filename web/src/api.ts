@@ -81,6 +81,7 @@ export interface DashboardData {
 export interface Job {
   id: string
   agent_name: string
+  conversation_id: string | null
   status: 'pending' | 'running' | 'completed' | 'failed'
   source: 'message' | 'schedule'
   mode: 'chat' | 'background'
