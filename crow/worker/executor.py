@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+from collections.abc import Callable
 
 import httpx
 
@@ -14,6 +15,8 @@ from crow.worker.prompt import render_prompt
 from crow.worker.tools import BUILTIN_TOOLS, TOOL_HANDLERS, ToolContext
 
 logger = logging.getLogger(__name__)
+
+SHUTDOWN_SENTINEL = "(shutdown)"
 
 
 async def _is_job_cancelled(
@@ -34,6 +37,29 @@ async def _is_job_cancelled(
     except Exception:
         pass
     return False
+
+
+async def _save_turn(
+    server_url: str,
+    worker_key: str,
+    job_id: str,
+    role: str,
+    content: list[dict],
+) -> None:
+    """Save an intermediate conversation turn to the DB via the server."""
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                f"{server_url}/jobs/{job_id}/turn",
+                headers={"x-worker-key": worker_key},
+                json={
+                    "role": role,
+                    "content": json.dumps(content),
+                },
+                timeout=10,
+            )
+    except Exception:
+        logger.warning("Failed to save turn for job %s", job_id)
 
 
 # -- Dispatcher --
@@ -76,6 +102,7 @@ async def run_agent(
     settings: Settings,
     server_url: str,
     worker_key: str,
+    should_stop: Callable[[], bool] | None = None,
 ) -> tuple[str, int]:
     """Run an agent job. Returns (output, tokens_used)."""
     job = job_data["job"]
@@ -176,10 +203,16 @@ async def run_agent(
         chunk_headers = {"x-worker-key": worker_key}
         chunk_url = f"{server_url}/jobs/{job.get('id')}/chunk"
         stream_chunks = job.get("conversation_id") is not None
+        job_id = job.get("id")
 
         for _ in range(max_iterations):
+            # Check for graceful shutdown
+            if should_stop and should_stop():
+                logger.info("Shutdown requested, requeueing job %s", job_id)
+                return SHUTDOWN_SENTINEL, total_tokens
+
             # Check if job was cancelled before each LLM call
-            if await _is_job_cancelled(server_url, worker_key, job.get("id")):
+            if await _is_job_cancelled(server_url, worker_key, job_id):
                 return "(cancelled)", total_tokens
 
             # Stream text chunks to the frontend
@@ -219,6 +252,12 @@ async def run_agent(
                     "role": "assistant",
                     "content": collected_content,
                 })
+
+                # Persist the assistant tool_use turn
+                await _save_turn(
+                    server_url, worker_key, job_id,
+                    "assistant", collected_content,
+                )
 
                 tool_blocks = [
                     b for b in collected_content if b["type"] == "tool_use"
@@ -307,6 +346,12 @@ async def run_agent(
 
                 api_messages.append(
                     {"role": "user", "content": tool_results}
+                )
+
+                # Persist the tool_result turn
+                await _save_turn(
+                    server_url, worker_key, job_id,
+                    "user", list(tool_results),
                 )
             else:
                 text_parts = [

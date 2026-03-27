@@ -5,6 +5,18 @@ import json
 import httpx
 
 
+def _parse_structured_content(content: str) -> str | list[dict]:
+    """Parse message content, returning structured blocks if JSON-encoded."""
+    if content and content.startswith("["):
+        try:
+            parsed = json.loads(content)
+            if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict):
+                return parsed
+        except (json.JSONDecodeError, KeyError):
+            pass
+    return content
+
+
 def build_api_messages(
     conversation_messages: list[dict],
     job_input: str,
@@ -51,8 +63,10 @@ def build_api_messages(
                 {"role": msg["role"], "content": content_blocks}
             )
         else:
+            # Structured content (tool_use/tool_result) is stored as JSON
+            content = _parse_structured_content(msg["content"])
             api_messages.append(
-                {"role": msg["role"], "content": msg["content"]}
+                {"role": msg["role"], "content": content}
             )
     if not conversation_messages:
         api_messages.append({"role": "user", "content": job_input})

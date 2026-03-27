@@ -3,12 +3,13 @@
 import asyncio
 import logging
 import platform
+import signal
 from uuid import uuid4
 
 import httpx
 
 from crow.config.settings import Settings
-from crow.worker.executor import run_agent
+from crow.worker.executor import SHUTDOWN_SENTINEL, run_agent
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,21 @@ async def worker_loop(server_url: str, settings: Settings) -> None:
         "x-worker-id": worker_id,
     }
 
+    shutdown_requested = False
+
+    def _request_shutdown():
+        nonlocal shutdown_requested
+        shutdown_requested = True
+        logger.info("Shutdown signal received, finishing current work...")
+
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(sig, _request_shutdown)
+        except NotImplementedError:
+            # Windows doesn't support add_signal_handler for SIGTERM
+            pass
+
     async with httpx.AsyncClient(timeout=30) as client:
         # Register
         await client.post(
@@ -31,7 +47,7 @@ async def worker_loop(server_url: str, settings: Settings) -> None:
         )
         logger.info("Worker %s (%s) registered with %s", worker_id, worker_name, server_url)
 
-        while True:
+        while not shutdown_requested:
             try:
                 # Poll for next job
                 resp = await client.get(f"{server_url}/jobs/next/claim", headers=headers)
@@ -46,17 +62,32 @@ async def worker_loop(server_url: str, settings: Settings) -> None:
 
                 job = job_data["job"]
                 logger.info(
-                    "Claimed job %s (agent=%s): %s",
+                    "Claimed job %s (agent=%s, attempt=%d): %s",
                     job["id"],
                     job["agent_name"],
+                    job.get("attempt", 0),
                     job["input"][:80],
                 )
 
                 # Execute
                 try:
                     output, tokens = await run_agent(
-                        job_data, settings, server_url, settings.worker_api_key
+                        job_data, settings, server_url, settings.worker_api_key,
+                        should_stop=lambda: shutdown_requested,
                     )
+
+                    # On graceful shutdown, requeue for another worker
+                    if output == SHUTDOWN_SENTINEL:
+                        logger.info(
+                            "Requeueing job %s for resume, exiting",
+                            job["id"],
+                        )
+                        await client.post(
+                            f"{server_url}/jobs/{job['id']}/requeue",
+                            headers=headers,
+                        )
+                        break
+
                     await client.post(
                         f"{server_url}/jobs/{job['id']}/result",
                         headers=headers,
@@ -77,3 +108,5 @@ async def worker_loop(server_url: str, settings: Settings) -> None:
             except Exception:
                 logger.exception("Worker loop error")
                 await asyncio.sleep(5)
+
+    logger.info("Worker %s shutting down", worker_id)

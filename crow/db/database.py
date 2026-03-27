@@ -222,6 +222,16 @@ class Database:
             job_id,
         )
 
+    async def requeue_job(self, job_id: str) -> None:
+        """Move a running job back to pending for another worker to pick up."""
+        await self._pool.execute(
+            """UPDATE jobs
+               SET status = 'pending', worker_id = NULL,
+                   started_at = NULL, attempt = attempt + 1
+               WHERE id = $1 AND status = 'running'""",
+            job_id,
+        )
+
     async def get_job(self, job_id: str, user_id: str | None = None) -> dict | None:
         if user_id:
             row = await self._pool.fetchrow(
@@ -1070,18 +1080,39 @@ class Database:
 
     # -- Zombie Job Reaping --
 
-    async def reap_zombie_jobs(self, cutoff) -> list[dict]:
-        """Mark running jobs started before cutoff as failed. Returns reaped."""
-        rows = await self._pool.fetch(
-            """UPDATE jobs SET status = 'failed',
-                  error = 'Reaped: no worker heartbeat',
-                  completed_at = now()
-               WHERE status = 'running'
-                 AND started_at < $1
-               RETURNING id, agent_name, started_at, conversation_id""",
-            cutoff,
-        )
-        return [dict(r) for r in rows]
+    async def requeue_zombie_jobs(
+        self, cutoff, max_attempts: int = 3
+    ) -> tuple[list[dict], list[dict]]:
+        """Requeue zombie jobs under retry cap, fail the rest.
+
+        Returns (requeued, failed) lists.
+        """
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                requeued = await conn.fetch(
+                    """UPDATE jobs
+                       SET status = 'pending', worker_id = NULL,
+                           started_at = NULL, attempt = attempt + 1
+                       WHERE status = 'running'
+                         AND started_at < $1
+                         AND attempt < $2
+                       RETURNING id, agent_name, started_at, conversation_id, attempt""",
+                    cutoff,
+                    max_attempts,
+                )
+                failed = await conn.fetch(
+                    """UPDATE jobs
+                       SET status = 'failed',
+                           error = 'Exceeded max retry attempts',
+                           completed_at = now()
+                       WHERE status = 'running'
+                         AND started_at < $1
+                         AND attempt >= $2
+                       RETURNING id, agent_name, started_at, conversation_id, attempt""",
+                    cutoff,
+                    max_attempts,
+                )
+        return [dict(r) for r in requeued], [dict(r) for r in failed]
 
     # -- Agent Store (Persistent Structured KV) --
 

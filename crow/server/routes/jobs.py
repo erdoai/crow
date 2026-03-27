@@ -336,6 +336,46 @@ async def job_progress(
     return {"status": "ok"}
 
 
+class TurnPayload(BaseModel):
+    role: str
+    content: str  # JSON-encoded structured content
+
+
+@router.post("/{job_id}/turn")
+async def save_turn(
+    job_id: str,
+    payload: TurnPayload,
+    request: Request,
+    x_worker_key: str = Header(),
+):
+    """Worker saves an intermediate conversation turn during execution."""
+    _check_worker_key(request, x_worker_key)
+    db = request.app.state.db
+    job = await db.get_job(job_id)
+    if not job or not job.get("conversation_id"):
+        return {"status": "ok"}
+    await db.insert_message(
+        conversation_id=job["conversation_id"],
+        role=payload.role,
+        content=payload.content,
+        agent_name=job["agent_name"] if payload.role == "assistant" else None,
+    )
+    return {"status": "ok"}
+
+
+@router.post("/{job_id}/requeue")
+async def requeue_job(
+    job_id: str,
+    request: Request,
+    x_worker_key: str = Header(),
+):
+    """Worker requeues a job for another worker (graceful shutdown)."""
+    _check_worker_key(request, x_worker_key)
+    db = request.app.state.db
+    await db.requeue_job(job_id)
+    return {"status": "ok"}
+
+
 class JobResult(BaseModel):
     output: str
     tokens_used: int = 0
