@@ -1088,12 +1088,16 @@ class Database:
     async def store_get(
         self, namespace: str, key: str, user_id: str | None = None
     ) -> dict | None:
+        uid = user_id or ""
         row = await self._pool.fetchrow(
             """SELECT data, created_at, updated_at FROM agent_store
-               WHERE namespace = $1 AND key = $2 AND user_id = $3""",
+               WHERE namespace = $1 AND key = $2
+                 AND (user_id = $3 OR user_id = '')
+               ORDER BY CASE WHEN user_id = $3 THEN 0 ELSE 1 END
+               LIMIT 1""",
             namespace,
             key,
-            user_id or "",
+            uid,
         )
         return dict(row) if row else None
 
@@ -1146,34 +1150,38 @@ class Database:
     async def store_delete(
         self, namespace: str, key: str, user_id: str | None = None
     ) -> bool:
+        uid = user_id or ""
         result = await self._pool.execute(
             """DELETE FROM agent_store
-               WHERE namespace = $1 AND key = $2 AND user_id = $3""",
+               WHERE namespace = $1 AND key = $2
+                 AND (user_id = $3 OR user_id = '')""",
             namespace,
             key,
-            user_id or "",
+            uid,
         )
         return result.split()[-1] != "0"
 
     async def store_namespaces(self, user_id: str | None = None) -> list[dict]:
+        uid = user_id or ""
         rows = await self._pool.fetch(
             """SELECT namespace, COUNT(*) AS key_count,
                       MAX(updated_at) AS updated_at
-               FROM agent_store WHERE user_id = $1
+               FROM agent_store WHERE user_id = $1 OR user_id = ''
                GROUP BY namespace ORDER BY MAX(updated_at) DESC""",
-            user_id or "",
+            uid,
         )
         return [dict(r) for r in rows]
 
     async def store_list(
         self, namespace: str, user_id: str | None = None
     ) -> list[dict]:
+        uid = user_id or ""
         rows = await self._pool.fetch(
             """SELECT key, updated_at FROM agent_store
-               WHERE namespace = $1 AND user_id = $2
+               WHERE namespace = $1 AND (user_id = $2 OR user_id = '')
                ORDER BY updated_at DESC""",
             namespace,
-            user_id or "",
+            uid,
         )
         return [dict(r) for r in rows]
 

@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from crow.auth.dependencies import get_current_user
+from crow.auth.session import verify_job_token
 
 router = APIRouter(prefix="/api/store")
 
@@ -20,12 +21,24 @@ class StoreUpdatePayload(BaseModel):
 
 
 def _resolve_uid(request: Request, user: dict | None) -> str | None:
+    """Resolve user_id from session/API-key user OR worker job token."""
     auth_enabled = request.app.state.auth_config.get("enabled", True)
-    if not auth_enabled or not user:
+    if not auth_enabled:
         return None
-    if user.get("id") == "default":
-        return None
-    return user["id"]
+
+    # Session / API-key user
+    if user and user.get("id") != "default":
+        return user["id"]
+
+    # Worker job token (carries the owning user's ID)
+    token = request.headers.get("x-job-token")
+    if token:
+        secret = request.app.state.auth_config.get("session_secret", "")
+        payload = verify_job_token(token, secret)
+        if payload and payload.get("sub"):
+            return payload["sub"]
+
+    return None
 
 
 @router.get("")
