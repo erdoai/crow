@@ -46,6 +46,13 @@ class Router:
                 data=att["data"],
             )
 
+        # Auto-generate conversation title from first message
+        if not conversation.get("title"):
+            title = text.strip().split("\n")[0][:60]
+            if len(text.strip()) > 60:
+                title = title.rsplit(" ", 1)[0] + "..."
+            await self.db.set_conversation_title(conversation["id"], title)
+
         # Route to specific agent if requested, continue with the
         # conversation's current agent, or fall back to PA.
         agent_name = event.data.get("agent")

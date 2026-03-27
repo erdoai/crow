@@ -39,6 +39,7 @@ export interface Conversation {
   id: string
   gateway: string
   gateway_thread_id: string
+  title: string | null
   updated_at: string | null
 }
 

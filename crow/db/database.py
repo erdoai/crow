@@ -66,6 +66,15 @@ class Database:
         )
         return dict(row) if row else None
 
+    async def set_conversation_title(
+        self, conversation_id: str, title: str
+    ) -> None:
+        await self._pool.execute(
+            "UPDATE conversations SET title = $1 WHERE id = $2",
+            title,
+            conversation_id,
+        )
+
     async def list_conversations(
         self,
         limit: int = 50,

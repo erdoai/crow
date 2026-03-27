@@ -181,7 +181,7 @@ export default function ChatPage() {
                     )}
                     onClick={() => navigateAndCloseSidebar(`/chat/${c.id}`)}
                   >
-                    <div className="truncate">{c.gateway_thread_id}</div>
+                    <div className="truncate">{c.title || c.gateway_thread_id}</div>
                     {c.updated_at && (
                       <div className="text-xs text-muted-foreground">
                         {new Date(c.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}

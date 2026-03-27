@@ -40,8 +40,11 @@ async def stream_conversation(conversation_id: str, request: Request):
                     break
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=30.0)
-                    # Skip background job events from the conversation stream
-                    if event.data.get("mode") == "background":
+                    # Skip background job chunks/progress from conversation stream
+                    # (MESSAGE_RESPONSE from post_update still goes through)
+                    if event.data.get("mode") == "background" and event.type in (
+                        MESSAGE_CHUNK, JOB_PROGRESS,
+                    ):
                         continue
                     if event.type == MESSAGE_CHUNK:
                         data = json.dumps({
