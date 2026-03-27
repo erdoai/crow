@@ -15,6 +15,15 @@ import ActivitySection from '@/components/activity/ActivitySection'
 import { useJobNotifications } from '../hooks/useJobNotifications'
 import { cn } from '@/lib/utils'
 
+function relativeTime(iso: string): string {
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  if (s < 60) return 'just now'
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+  if (s < 604800) return `${Math.floor(s / 86400)}d ago`
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
 export default function ChatPage() {
   const { conversationId } = useParams<{ conversationId: string }>()
   const navigate = useNavigate()
@@ -181,10 +190,15 @@ export default function ChatPage() {
                     )}
                     onClick={() => navigateAndCloseSidebar(`/chat/${c.id}`)}
                   >
-                    <div className="truncate">{c.title || c.gateway_thread_id}</div>
+                    <div className="truncate text-sm">
+                      {c.title || c.gateway_thread_id}
+                    </div>
                     {c.updated_at && (
-                      <div className="text-xs text-muted-foreground">
-                        {new Date(c.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      <div
+                        className="text-[11px] text-muted-foreground"
+                        title={new Date(c.updated_at).toLocaleString()}
+                      >
+                        {relativeTime(c.updated_at)}
                       </div>
                     )}
                   </button>

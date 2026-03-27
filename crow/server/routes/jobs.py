@@ -330,43 +330,35 @@ async def report_result(
     if job and job["conversation_id"]:
         conv = await db.get_conversation(job["conversation_id"])
 
-        if job_mode == "background":
-            # Background: no message insertion, just notify
-            if conv and conv.get("user_id"):
+        # Always insert the response message — background mode only
+        # suppresses streaming chunks/typing indicator, not the final result
+        msg_id = await db.insert_message(
+            conversation_id=job["conversation_id"],
+            role="assistant",
+            content=result.output,
+            agent_name=agent_name,
+        )
+        await db.link_job_attachments_to_message(job_id, msg_id)
+
+        if conv:
+            await bus.publish(
+                Event(
+                    type=MESSAGE_RESPONSE,
+                    data={
+                        "gateway": conv["gateway"],
+                        "gateway_thread_id": conv["gateway_thread_id"],
+                        "conversation_id": job["conversation_id"],
+                        "text": result.output,
+                        "agent_name": agent_name,
+                    },
+                )
+            )
+            if conv.get("user_id"):
                 await _send_push_notification(
                     db, conv["user_id"],
-                    f"{agent_name} completed (background)",
-                    result.output[:200],
+                    f"{agent_name} completed",
+                    result.output[:100],
                 )
-        else:
-            # Chat: insert message into conversation thread
-            msg_id = await db.insert_message(
-                conversation_id=job["conversation_id"],
-                role="assistant",
-                content=result.output,
-                agent_name=agent_name,
-            )
-            await db.link_job_attachments_to_message(job_id, msg_id)
-
-            if conv:
-                await bus.publish(
-                    Event(
-                        type=MESSAGE_RESPONSE,
-                        data={
-                            "gateway": conv["gateway"],
-                            "gateway_thread_id": conv["gateway_thread_id"],
-                            "conversation_id": job["conversation_id"],
-                            "text": result.output,
-                            "agent_name": agent_name,
-                        },
-                    )
-                )
-                if conv.get("user_id"):
-                    await _send_push_notification(
-                        db, conv["user_id"],
-                        f"{agent_name} completed",
-                        result.output[:100],
-                    )
 
     return {"status": "ok"}
 
