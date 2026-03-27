@@ -1201,7 +1201,11 @@ async def execute_builtin(
         job=job,
         settings=settings,
     )
-    return await handler(tool_input, ctx)
+    try:
+        return await handler(tool_input, ctx)
+    except Exception as e:
+        logger.exception("Built-in tool %s failed", tool_name)
+        return json.dumps({"error": f"Tool {tool_name} failed: {e}"})
 
 
 # -- Agent runner --
