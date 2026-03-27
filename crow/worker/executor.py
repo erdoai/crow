@@ -708,6 +708,33 @@ async def _handle_store_delete(inp: dict, ctx: ToolContext) -> str:
 
 
 @builtin_tool(
+    name="store_list",
+    description=(
+        "List all keys in the agent store. Call this at the start of a "
+        "run to discover what data has been saved from previous runs."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "namespace": {
+                "type": "string",
+                "description": "Namespace (defaults to current agent name)",
+            },
+        },
+    },
+)
+async def _handle_store_list(inp: dict, ctx: ToolContext) -> str:
+    ns = inp.get("namespace") or ctx.job.get("agent_name", "default")
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{ctx.server_url}/api/store/{ns}",
+            headers=ctx.headers,
+            timeout=10,
+        )
+        return resp.text
+
+
+@builtin_tool(
     name="execute_code",
     description=(
         "Execute Python code in a sandboxed environment (E2B). "
