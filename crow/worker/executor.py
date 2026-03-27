@@ -1290,6 +1290,11 @@ async def run_agent(
         system_prompt += "\n\n## Your knowledge\n\n" + "\n\n".join(parts)
 
     # Build messages (with attachment content blocks)
+    # Background jobs use their task input, not conversation history
+    job_mode = job.get("mode", "chat")
+    if job_mode == "background":
+        conversation_messages = []
+
     api_messages = []
     for msg in conversation_messages:
         attachments = msg.get("attachments") or []
