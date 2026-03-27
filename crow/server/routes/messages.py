@@ -52,6 +52,6 @@ async def inbound_message(request: Request):
         agent=agent,
         user_id=user_id,
         attachments=attachments or None,
-        mode="background" if background else "chat",
+        mode="background" if background else None,
     )
     return {"status": "accepted", "thread_id": thread_id}
