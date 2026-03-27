@@ -23,7 +23,7 @@ export default function StoreSection() {
   const [copied, setCopied] = useState(false)
 
   const loadNamespaces = useCallback(() => {
-    fetchJSON<StoreNamespace[]>('/store').then(setNamespaces).catch(() => {})
+    fetchJSON<StoreNamespace[]>('/api/store').then(setNamespaces).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -34,25 +34,25 @@ export default function StoreSection() {
     setSelectedNs(ns)
     setSelectedKey(null)
     setValueData(null)
-    fetchJSON<StoreKey[]>(`/store/${encodeURIComponent(ns)}`).then(setKeys).catch(() => {})
+    fetchJSON<StoreKey[]>(`/api/store/${encodeURIComponent(ns)}`).then(setKeys).catch(() => {})
   }
 
   function openKey(ns: string, key: string) {
     setSelectedKey({ ns, key })
-    fetchJSON<StoreValue>(`/store/${encodeURIComponent(ns)}/${encodeURIComponent(key)}`)
+    fetchJSON<StoreValue>(`/api/store/${encodeURIComponent(ns)}/${encodeURIComponent(key)}`)
       .then(v => setValueData(v.data))
       .catch(() => setValueData(null))
   }
 
   async function deleteKey(ns: string, key: string) {
-    await fetchJSON(`/store/${encodeURIComponent(ns)}/${encodeURIComponent(key)}`, { method: 'DELETE' })
+    await fetchJSON(`/api/store/${encodeURIComponent(ns)}/${encodeURIComponent(key)}`, { method: 'DELETE' })
     // If we were viewing this key, go back to key list
     if (selectedKey?.ns === ns && selectedKey?.key === key) {
       setSelectedKey(null)
       setValueData(null)
     }
     // Refresh keys
-    const updated = await fetchJSON<StoreKey[]>(`/store/${encodeURIComponent(ns)}`)
+    const updated = await fetchJSON<StoreKey[]>(`/api/store/${encodeURIComponent(ns)}`)
     setKeys(updated)
     // If namespace is now empty, go back to namespace list
     if (updated.length === 0) {
