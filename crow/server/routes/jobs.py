@@ -9,6 +9,7 @@ from crow.auth.dependencies import get_current_user
 from crow.auth.session import create_job_token
 from crow.events.types import (
     JOB_COMPLETED,
+    JOB_CREATED,
     JOB_FAILED,
     JOB_PROGRESS,
     JOB_STARTED,
@@ -72,6 +73,46 @@ async def get_job(job_id: str, request: Request):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
+
+
+class CreateJobPayload(BaseModel):
+    agent_name: str
+    input: str
+    conversation_id: str | None = None
+    mode: str = "background"
+    user_id: str | None = None
+
+
+@router.post("")
+async def create_job_direct(
+    payload: CreateJobPayload,
+    request: Request,
+    x_worker_key: str = Header(),
+):
+    """Worker-facing: create a job directly (e.g. spawn_job tool)."""
+    _check_worker_key(request, x_worker_key)
+    db = request.app.state.db
+    bus = request.app.state.bus
+
+    job_id = await db.create_job(
+        agent_name=payload.agent_name,
+        input_text=payload.input,
+        conversation_id=payload.conversation_id,
+        mode=payload.mode,
+    )
+
+    await bus.publish(Event(
+        type=JOB_CREATED,
+        data={
+            "job_id": job_id,
+            "agent_name": payload.agent_name,
+            "conversation_id": payload.conversation_id,
+            "text": payload.input,
+            "mode": payload.mode,
+        },
+    ))
+
+    return {"status": "created", "job_id": job_id}
 
 
 # -- Worker-facing --

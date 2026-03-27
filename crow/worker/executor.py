@@ -415,6 +415,57 @@ async def _handle_delete_agent(inp: dict, ctx: ToolContext) -> str:
 
 
 @builtin_tool(
+    name="spawn_job",
+    description=(
+        "Spawn a background job that runs immediately and independently. "
+        "Returns instantly — the spawned job runs on a separate worker "
+        "while you continue responding to the user. Use this to kick off "
+        "long-running work (searching, research, analysis) while keeping "
+        "the chat responsive."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "agent_name": {
+                "type": "string",
+                "description": "Agent to run (can be yourself or another agent)",
+            },
+            "task": {
+                "type": "string",
+                "description": (
+                    "Detailed task description for the background job"
+                ),
+            },
+        },
+        "required": ["agent_name", "task"],
+    },
+)
+async def _handle_spawn_job(inp: dict, ctx: ToolContext) -> str:
+    payload = {
+        "agent_name": inp["agent_name"],
+        "input": inp["task"],
+        "conversation_id": ctx.job.get("conversation_id"),
+        "mode": "background",
+        "user_id": ctx.job.get("user_id"),
+    }
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{ctx.server_url}/jobs",
+            headers=ctx.headers,
+            json=payload,
+            timeout=10,
+        )
+        if resp.status_code >= 400:
+            return f"Failed to spawn job: {resp.text}"
+        data = resp.json()
+        return (
+            f"Background job spawned: {inp['agent_name']}"
+            f" (job_id={data['job_id']}). It will run independently"
+            f" and post updates to the conversation."
+        )
+
+
+@builtin_tool(
     name="schedule",
     description=(
         "Schedule a future job. Use for heartbeats (schedule yourself to"
