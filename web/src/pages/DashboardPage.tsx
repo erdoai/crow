@@ -105,19 +105,21 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="bg-primary text-primary-foreground px-6 py-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold tracking-tight">crow</h1>
-        <div className="flex items-center gap-4">
-          <span className="text-sm opacity-90">hi, {data.display_name}</span>
+      <header className="bg-primary text-primary-foreground px-4 py-3 flex items-center justify-between gap-2 sm:px-6 sm:py-4">
+        <h1 className="text-xl font-bold tracking-tight shrink-0">crow</h1>
+        <div className="flex items-center gap-1 sm:gap-4 flex-wrap justify-end">
+          <span className="text-sm opacity-90 hidden sm:inline">hi, {data.display_name}</span>
           {views.map(v => (
             <a key={v.name} href={v.url}>
               <Button variant="ghost" size="sm" className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10">
-                <LayoutDashboard className="h-4 w-4 mr-1" /> {v.label}
+                <LayoutDashboard className="h-4 w-4 sm:mr-1" />
+                <span className="hidden sm:inline">{v.label}</span>
               </Button>
             </a>
           ))}
           <Button variant="ghost" size="sm" onClick={() => navigate('/chat')} className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10">
-            <MessageSquare className="h-4 w-4 mr-1" /> chat
+            <MessageSquare className="h-4 w-4 sm:mr-1" />
+            <span className="hidden sm:inline">chat</span>
           </Button>
           <ThemeToggle className="text-primary-foreground/70 hover:text-primary-foreground [&_button]:hover:bg-white/10" />
           {data.auth_enabled && (
@@ -128,7 +130,7 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto p-6 flex flex-col gap-8">
+      <main className="max-w-3xl mx-auto px-4 py-4 sm:p-6 flex flex-col gap-6 sm:gap-8">
         {/* Agents */}
         <section>
           <div className="flex items-center justify-between mb-3">
@@ -146,7 +148,7 @@ export default function DashboardPage() {
               </Button>
             </div>
           </div>
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
             {data.agents.map(agent => (
               <Card
                 key={agent.name}
@@ -182,12 +184,12 @@ export default function DashboardPage() {
           {data.api_keys.length > 0 && (
             <div className="bg-card border rounded-lg mb-3 divide-y">
               {data.api_keys.map(key => (
-                <div key={key.id} className="flex items-center justify-between px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm">{key.name}</span>
-                    <code className="text-xs text-muted-foreground">{key.key_prefix}...</code>
+                <div key={key.id} className="flex items-center justify-between px-3 py-3 gap-2 sm:px-4">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-medium text-sm truncate">{key.name}</span>
+                    <code className="text-xs text-muted-foreground shrink-0">{key.key_prefix}...</code>
                   </div>
-                  <Button variant="ghost" size="sm" onClick={() => deleteApiKey(key.id)}>revoke</Button>
+                  <Button variant="ghost" size="sm" className="shrink-0" onClick={() => deleteApiKey(key.id)}>revoke</Button>
                 </div>
               ))}
             </div>
@@ -198,8 +200,8 @@ export default function DashboardPage() {
             </div>
           )}
           <form className="flex gap-2 items-center" onSubmit={createApiKey}>
-            <Input placeholder="key name" value={keyName} onChange={e => setKeyName(e.target.value)} className="max-w-xs" />
-            <Button type="submit" variant="secondary" size="sm">create key</Button>
+            <Input placeholder="key name" value={keyName} onChange={e => setKeyName(e.target.value)} className="flex-1 sm:max-w-xs" />
+            <Button type="submit" variant="secondary" size="sm" className="shrink-0">create key</Button>
           </form>
         </section>
 
@@ -211,12 +213,12 @@ export default function DashboardPage() {
           {data.knowledge.length > 0 ? (
             <div className="bg-card border rounded-lg divide-y">
               {data.knowledge.map(k => (
-                <div key={k.id} className="flex items-center justify-between px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="secondary">{k.category}</Badge>
-                    <span className="text-sm">{k.title}</span>
+                <div key={k.id} className="flex items-center justify-between px-3 py-3 gap-2 sm:px-4">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Badge variant="secondary" className="shrink-0">{k.category}</Badge>
+                    <span className="text-sm truncate">{k.title}</span>
                   </div>
-                  <span className="text-xs text-muted-foreground">{k.agent_name}</span>
+                  <span className="text-xs text-muted-foreground shrink-0">{k.agent_name}</span>
                 </div>
               ))}
             </div>
@@ -235,14 +237,14 @@ export default function DashboardPage() {
               {data.conversations.map(c => (
                 <button
                   key={c.id}
-                  className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-accent/50 transition-colors"
+                  className="w-full flex items-center justify-between px-3 py-3 gap-2 text-left hover:bg-accent/50 transition-colors sm:px-4"
                   onClick={() => navigate(`/chat/${c.id}`)}
                 >
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline">{c.gateway}</Badge>
-                    <code className="text-sm">{c.gateway_thread_id}</code>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Badge variant="outline" className="shrink-0">{c.gateway}</Badge>
+                    <code className="text-sm truncate">{c.gateway_thread_id}</code>
                   </div>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-xs text-muted-foreground shrink-0">
                     {c.updated_at ? new Date(c.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
                   </span>
                 </button>

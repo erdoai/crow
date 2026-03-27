@@ -21,7 +21,7 @@ export default function ActivityPanel({ onClose }: { onClose: () => void }) {
   )
 
   return (
-    <aside className="w-80 min-w-80 border-l flex flex-col bg-sidebar">
+    <aside className="w-full sm:w-80 sm:min-w-80 border-l flex flex-col bg-sidebar">
       <div className="p-4 flex items-center justify-between border-b border-sidebar-border">
         <span className="text-sm font-semibold">activity</span>
         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
