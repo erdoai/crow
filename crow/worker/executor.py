@@ -1241,6 +1241,49 @@ async def run_agent(
 
     system_prompt = render_prompt(agent["prompt_template"], prompt_context)
 
+    # Inject agent store state into system prompt
+    if "store_get" in set(agent.get("tools", [])):
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{server_url}/api/store/{agent['name']}",
+                    headers={"x-worker-key": worker_key},
+                    timeout=10,
+                )
+                if resp.status_code == 200:
+                    store_keys = resp.json()
+                    if store_keys:
+                        store_parts = []
+                        for sk in store_keys[:20]:
+                            kr = await client.get(
+                                f"{server_url}/api/store/{agent['name']}/{sk['key']}",
+                                headers={"x-worker-key": worker_key},
+                                timeout=10,
+                            )
+                            if kr.status_code == 200:
+                                store_parts.append(
+                                    f"**{sk['key']}**: {kr.json().get('data')}"
+                                )
+                        if store_parts:
+                            system_prompt += (
+                                "\n\n## Your current store state"
+                                " (authoritative — trust this over"
+                                " conversation history)\n\n"
+                                + "\n\n".join(store_parts)
+                            )
+                        else:
+                            system_prompt += (
+                                "\n\n## Store state\n\nYour store"
+                                " is empty — no data from previous runs."
+                            )
+                    else:
+                        system_prompt += (
+                            "\n\n## Store state\n\nYour store"
+                            " is empty — no data from previous runs."
+                        )
+        except Exception:
+            pass  # Don't crash if store fetch fails
+
     # Inject knowledge into system prompt
     if knowledge_entries:
         parts = []
