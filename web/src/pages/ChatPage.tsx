@@ -12,6 +12,7 @@ import { Separator } from '@/components/ui/separator'
 import { MessageSquarePlus, ChevronDown, ChevronRight, Menu, X } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme-toggle'
 import ActivitySection from '@/components/activity/ActivitySection'
+import StoreSection from '@/components/store/StoreSection'
 import { useJobNotifications } from '../hooks/useJobNotifications'
 import { cn } from '@/lib/utils'
 
@@ -161,6 +162,11 @@ export default function ChatPage() {
           workers={workers}
           cancelScheduledJob={cancelScheduledJob}
         />
+
+        <Separator />
+
+        {/* Store section */}
+        <StoreSection />
 
         <Separator />
 

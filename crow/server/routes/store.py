@@ -28,13 +28,34 @@ def _resolve_uid(request: Request, user: dict | None) -> str | None:
     return user["id"]
 
 
+@router.get("")
+async def list_namespaces(request: Request):
+    """List all namespaces with key counts."""
+    user = await get_current_user(request)
+    uid = _resolve_uid(request, user)
+    db = request.app.state.db
+    rows = await db.store_namespaces(user_id=uid)
+    return [
+        {
+            "namespace": r["namespace"],
+            "key_count": r["key_count"],
+            "updated_at": r["updated_at"].isoformat() if r["updated_at"] else None,
+        }
+        for r in rows
+    ]
+
+
 @router.get("/{namespace}")
 async def list_keys(namespace: str, request: Request):
     """List all keys in a namespace."""
     user = await get_current_user(request)
     uid = _resolve_uid(request, user)
     db = request.app.state.db
-    return await db.store_list(namespace, user_id=uid)
+    rows = await db.store_list(namespace, user_id=uid)
+    return [
+        {"key": r["key"], "updated_at": r["updated_at"].isoformat() if r["updated_at"] else None}
+        for r in rows
+    ]
 
 
 @router.get("/{namespace}/{key}")

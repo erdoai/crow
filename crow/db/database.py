@@ -1155,6 +1155,16 @@ class Database:
         )
         return result.split()[-1] != "0"
 
+    async def store_namespaces(self, user_id: str | None = None) -> list[dict]:
+        rows = await self._pool.fetch(
+            """SELECT namespace, COUNT(*) AS key_count,
+                      MAX(updated_at) AS updated_at
+               FROM agent_store WHERE user_id = $1
+               GROUP BY namespace ORDER BY MAX(updated_at) DESC""",
+            user_id or "",
+        )
+        return [dict(r) for r in rows]
+
     async def store_list(
         self, namespace: str, user_id: str | None = None
     ) -> list[dict]:

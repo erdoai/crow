@@ -111,6 +111,23 @@ export interface Worker {
   status: string
 }
 
+export interface StoreNamespace {
+  namespace: string
+  key_count: number
+  updated_at: string | null
+}
+
+export interface StoreKey {
+  key: string
+  updated_at: string | null
+}
+
+export interface StoreValue {
+  namespace: string
+  key: string
+  data: unknown
+}
+
 export interface JobEvent {
   type: 'tool_call' | 'tool_result' | 'text' | 'progress' | 'error'
   text?: string
