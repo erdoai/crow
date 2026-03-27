@@ -497,6 +497,24 @@ async def job_heartbeat(
     return {"status": "ok"}
 
 
+@router.post("/{job_id}/cancel")
+async def cancel_job(job_id: str, request: Request):
+    """User cancels a running job."""
+    db = request.app.state.db
+    bus = request.app.state.bus
+    job = await db.get_job(job_id)
+    if not job:
+        raise HTTPException(404, "Job not found")
+    if job["status"] not in ("pending", "running"):
+        return {"status": "already_finished"}
+    await db.fail_job(job_id, "Cancelled by user")
+    await bus.publish(Event(
+        type=JOB_FAILED,
+        data={"job_id": job_id, "error": "Cancelled by user"},
+    ))
+    return {"status": "cancelled"}
+
+
 class UpdateMessage(BaseModel):
     text: str
     agent_name: str | None = None

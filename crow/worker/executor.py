@@ -16,6 +16,26 @@ from crow.worker.tools import BUILTIN_TOOLS, TOOL_HANDLERS, ToolContext
 logger = logging.getLogger(__name__)
 
 
+async def _is_job_cancelled(
+    server_url: str, worker_key: str, job_id: str | None
+) -> bool:
+    """Check if a job has been cancelled (status=failed)."""
+    if not job_id:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{server_url}/jobs/{job_id}",
+                headers={"x-worker-key": worker_key},
+                timeout=5,
+            )
+            if resp.status_code == 200:
+                return resp.json().get("status") == "failed"
+    except Exception:
+        pass
+    return False
+
+
 # -- Dispatcher --
 
 
@@ -158,6 +178,10 @@ async def run_agent(
         stream_chunks = job.get("conversation_id") is not None
 
         for _ in range(max_iterations):
+            # Check if job was cancelled before each LLM call
+            if await _is_job_cancelled(server_url, worker_key, job.get("id")):
+                return "(cancelled)", total_tokens
+
             # Stream text chunks to the frontend
             async def on_stream_event(event: StreamEvent):
                 if event.type == "text_delta" and event.text and stream_chunks:
