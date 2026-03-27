@@ -785,6 +785,42 @@ async def _handle_store_list(inp: dict, ctx: ToolContext) -> str:
         return resp.text
 
 
+async def _fetch_store_summary(
+    server_url: str, worker_key: str, agent_name: str
+) -> str | None:
+    """Fetch agent store state for injection into context."""
+    try:
+        headers = {"x-worker-key": worker_key}
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{server_url}/api/store/{agent_name}",
+                headers=headers,
+                timeout=10,
+            )
+            if resp.status_code != 200:
+                return None
+            store_keys = resp.json()
+            if not store_keys:
+                return "Store is empty — no data from previous runs."
+            parts = []
+            for sk in store_keys[:20]:
+                kr = await client.get(
+                    f"{server_url}/api/store/{agent_name}/{sk['key']}",
+                    headers=headers,
+                    timeout=10,
+                )
+                if kr.status_code == 200:
+                    data = kr.json().get("data")
+                    # Truncate large values
+                    text = json.dumps(data) if not isinstance(data, str) else data
+                    if len(text) > 2000:
+                        text = text[:2000] + "... (truncated)"
+                    parts.append(f"**{sk['key']}**: {text}")
+            return "\n\n".join(parts) if parts else None
+    except Exception:
+        return None
+
+
 def _collect_sandbox_envs() -> dict[str, str]:
     """Collect API keys and credentials to forward to the E2B sandbox."""
     envs = {}
@@ -1241,49 +1277,6 @@ async def run_agent(
 
     system_prompt = render_prompt(agent["prompt_template"], prompt_context)
 
-    # Inject agent store state into system prompt
-    if "store_get" in set(agent.get("tools", [])):
-        try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(
-                    f"{server_url}/api/store/{agent['name']}",
-                    headers={"x-worker-key": worker_key},
-                    timeout=10,
-                )
-                if resp.status_code == 200:
-                    store_keys = resp.json()
-                    if store_keys:
-                        store_parts = []
-                        for sk in store_keys[:20]:
-                            kr = await client.get(
-                                f"{server_url}/api/store/{agent['name']}/{sk['key']}",
-                                headers={"x-worker-key": worker_key},
-                                timeout=10,
-                            )
-                            if kr.status_code == 200:
-                                store_parts.append(
-                                    f"**{sk['key']}**: {kr.json().get('data')}"
-                                )
-                        if store_parts:
-                            system_prompt += (
-                                "\n\n## Your current store state"
-                                " (authoritative — trust this over"
-                                " conversation history)\n\n"
-                                + "\n\n".join(store_parts)
-                            )
-                        else:
-                            system_prompt += (
-                                "\n\n## Store state\n\nYour store"
-                                " is empty — no data from previous runs."
-                            )
-                    else:
-                        system_prompt += (
-                            "\n\n## Store state\n\nYour store"
-                            " is empty — no data from previous runs."
-                        )
-        except Exception:
-            pass  # Don't crash if store fetch fails
-
     # Inject knowledge into system prompt
     if knowledge_entries:
         parts = []
@@ -1343,6 +1336,29 @@ async def run_agent(
             )
     if not conversation_messages:
         api_messages.append({"role": "user", "content": job["input"]})
+
+    # Inject agent store state before the last user message.
+    # Placed here (not in system prompt) to preserve prompt caching.
+    if "store_get" in set(agent.get("tools", [])):
+        store_text = await _fetch_store_summary(
+            server_url, worker_key, agent["name"]
+        )
+        if store_text:
+            # Insert before the last user message
+            insert_idx = len(api_messages) - 1
+            while insert_idx > 0 and api_messages[insert_idx]["role"] != "user":
+                insert_idx -= 1
+            api_messages.insert(insert_idx, {
+                "role": "user",
+                "content": (
+                    f"[System: current store state — authoritative,"
+                    f" trust over conversation history]\n{store_text}"
+                ),
+            })
+            api_messages.insert(insert_idx + 1, {
+                "role": "assistant",
+                "content": "Understood, I'll use the store state as my source of truth.",
+            })
 
     # Collect built-in tool definitions
     builtin_names = set(agent.get("tools", []))
