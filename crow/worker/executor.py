@@ -734,6 +734,22 @@ async def _handle_store_delete(inp: dict, ctx: ToolContext) -> str:
         "required": ["code"],
     },
 )
+def _collect_sandbox_envs() -> dict[str, str]:
+    """Collect API keys from the environment to forward to the E2B sandbox."""
+    envs = {}
+    # Forward common API key patterns from the worker environment
+    for key, value in os.environ.items():
+        if not value:
+            continue
+        # Forward known API keys (strip CROW_ prefix for cleaner names)
+        if key.startswith("CROW_") and key.endswith("_API_KEY"):
+            clean = key.removeprefix("CROW_")
+            envs[clean] = value
+        elif key.endswith("_API_KEY") and key != "E2B_API_KEY":
+            envs[key] = value
+    return envs
+
+
 async def _handle_execute_code(inp: dict, ctx: ToolContext) -> str:
     try:
         from e2b_code_interpreter import AsyncSandbox
@@ -746,8 +762,11 @@ async def _handle_execute_code(inp: dict, ctx: ToolContext) -> str:
     code = inp["code"]
     packages = inp.get("packages") or []
 
+    # Forward API keys to the sandbox so code can call external APIs
+    sandbox_envs = _collect_sandbox_envs()
+
     try:
-        sandbox = await AsyncSandbox.create(timeout=120)
+        sandbox = await AsyncSandbox.create(timeout=120, envs=sandbox_envs)
         try:
             if packages:
                 pip_cmd = f"pip install {' '.join(packages)}"

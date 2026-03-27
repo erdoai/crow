@@ -134,8 +134,11 @@ mcp_servers:
 | `mcp_servers` | no | List of MCP server names (instance-level refs) **or** dict of inline MCP configs. Inline configs override instance-level servers of the same name |
 | `knowledge_areas` | no | Scopes for PARA knowledge reads/writes |
 | `max_iterations` | no | Max tool-use loops for this agent (defaults to server default) |
+| `mode` | no | Default job mode: `chat` (blocks thread, default) or `background` (runs silently, notifies on completion) |
 
 **Available built-in tools:** `delegate_to_agent`, `delegate_parallel`, `knowledge_search`, `knowledge_write`, `knowledge_archive`, `store_get`, `store_set`, `store_update`, `store_delete`, `upsert_agent`, `list_agents`, `delete_agent`, `schedule`, `progress_update`, `post_update`, `create_attachment`, `execute_code`, `browse_web`, `evaluate_run`
+
+**Code execution and API access:** The `execute_code` tool runs Python in an E2B sandbox. API keys from the worker environment (any env var ending in `_API_KEY`) are automatically forwarded to the sandbox. Agents can call external APIs directly from code — use knowledge to store working API integration snippets (category `resource`) so they can be reused across runs and by other agents.
 
 ### Sub-agents and orchestration
 
