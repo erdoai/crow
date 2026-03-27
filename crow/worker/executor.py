@@ -735,17 +735,19 @@ async def _handle_store_delete(inp: dict, ctx: ToolContext) -> str:
     },
 )
 def _collect_sandbox_envs() -> dict[str, str]:
-    """Collect API keys from the environment to forward to the E2B sandbox."""
+    """Collect API keys and credentials to forward to the E2B sandbox."""
     envs = {}
-    # Forward common API key patterns from the worker environment
+    # Forward anything that looks like credentials
     for key, value in os.environ.items():
         if not value:
             continue
-        # Forward known API keys (strip CROW_ prefix for cleaner names)
-        if key.startswith("CROW_") and key.endswith("_API_KEY"):
-            clean = key.removeprefix("CROW_")
-            envs[clean] = value
-        elif key.endswith("_API_KEY") and key != "E2B_API_KEY":
+        # Skip E2B's own key (used by the client, not the sandbox)
+        if key == "E2B_API_KEY":
+            continue
+        # Forward API keys, app IDs, and secrets
+        if key.startswith("CROW_") and ("API_KEY" in key or "API_ID" in key):
+            envs[key.removeprefix("CROW_")] = value
+        elif "API_KEY" in key or "APP_ID" in key or "API_ID" in key:
             envs[key] = value
     return envs
 
