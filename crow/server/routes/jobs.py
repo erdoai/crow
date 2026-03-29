@@ -120,6 +120,11 @@ async def create_job_direct(
             user_id=user_id,
         )
         job_conversation_id = bg_conv["id"]
+        # Title the bg conversation so it's identifiable in the sidebar
+        title = f"{payload.agent_name}: {payload.input[:50]}"
+        if len(payload.input) > 50:
+            title = title.rsplit(" ", 1)[0] + "..."
+        await db.set_conversation_title(bg_conv["id"], title)
 
     job_id = await db.create_job(
         agent_name=payload.agent_name,
@@ -440,19 +445,55 @@ async def report_result(
 
     if job and job["conversation_id"]:
         is_bg = bool(job.get("parent_conversation_id"))
-        # Intermediate turns + final text are already saved to the
-        # conversation via _save_turn. No insert_message here.
-        target_conv_id = job.get("parent_conversation_id") or job["conversation_id"]
-        conv = await db.get_conversation(target_conv_id)
 
         if is_bg:
-            if conv and conv.get("user_id"):
+            # Background job done — trigger a chat job on the parent
+            # conversation so the main agent can summarise the results
+            # for the user (instead of dumping raw internal output).
+            parent_conv_id = job["parent_conversation_id"]
+            parent_conv = await db.get_conversation(parent_conv_id)
+
+            # Format as a tool result from spawn_job reporting back
+            output_text = str(result.output)[:4000] if result.output else "(no output)"
+            handoff = (
+                f"[spawn_job result: {agent_name} (job_id={job_id}) completed]\n\n"
+                f"{output_text}"
+            )
+            await db.insert_message(
+                conversation_id=parent_conv_id,
+                role="user",
+                content=handoff,
+            )
+
+            # Determine which agent should reply on the parent thread
+            parent_agent = await db.last_agent_for_conversation(
+                parent_conv_id
+            ) or agent_name
+            followup_job_id = await db.create_job(
+                agent_name=parent_agent,
+                input_text=handoff,
+                conversation_id=parent_conv_id,
+            )
+            await bus.publish(Event(
+                type=JOB_CREATED,
+                data={
+                    "job_id": followup_job_id,
+                    "agent_name": parent_agent,
+                    "conversation_id": parent_conv_id,
+                    "text": handoff,
+                },
+            ))
+
+            if parent_conv and parent_conv.get("user_id"):
                 await _send_push_notification(
-                    db, conv["user_id"],
+                    db, parent_conv["user_id"],
                     f"{agent_name} completed",
-                    "Background job finished.",
+                    str(result.output)[:100],
                 )
         else:
+            # Chat jobs: turns are already in the conversation via
+            # _save_turn. Just notify the frontend the job is done.
+            conv = await db.get_conversation(job["conversation_id"])
             if conv:
                 await bus.publish(
                     Event(

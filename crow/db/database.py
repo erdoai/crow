@@ -103,7 +103,13 @@ class Database:
             conditions.append(f"gateway_thread_id NOT LIKE ${idx}")
             params.append("delegate-%")
             idx += 1
-            conditions.append(f"gateway != ${idx}")
+            # Show bg conversations only when their job is done
+            conditions.append(
+                f"(gateway != ${idx} OR id IN ("
+                f"SELECT conversation_id FROM jobs "
+                f"WHERE status IN ('completed', 'failed')"
+                f"))"
+            )
             params.append("background")
             idx += 1
 

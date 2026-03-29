@@ -211,6 +211,9 @@ export default function ChatPage() {
                       {activeConversationIds.has(c.id) && (
                         <Circle className="h-2 w-2 shrink-0 fill-green-500 text-green-500" />
                       )}
+                      {c.gateway === 'background' && (
+                        <span className="text-[10px] text-muted-foreground shrink-0">bg</span>
+                      )}
                       <span className="truncate">{c.title || c.gateway_thread_id}</span>
                     </div>
                     {c.updated_at && (
