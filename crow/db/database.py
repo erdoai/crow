@@ -16,7 +16,15 @@ class Database:
 
     @classmethod
     async def connect(cls, database_url: str) -> "Database":
-        pool = await asyncpg.create_pool(database_url)
+        async def _init_connection(conn: asyncpg.Connection) -> None:
+            await conn.set_type_codec(
+                "jsonb",
+                encoder=json.dumps,
+                decoder=json.loads,
+                schema="pg_catalog",
+            )
+
+        pool = await asyncpg.create_pool(database_url, init=_init_connection)
         db = cls(pool)
         await run_migrations(pool)
         logger.info("Database connected and migrations applied")
@@ -115,15 +123,13 @@ class Database:
         agent_name: str | None = None,
     ) -> str:
         msg_id = uuid4().hex
-        # JSONB column: lists are stored as JSON arrays, strings as JSON strings
-        content_json = json.dumps(content)
         await self._pool.execute(
             """INSERT INTO messages (id, conversation_id, role, content, agent_name, created_at)
                VALUES ($1, $2, $3, $4::jsonb, $5, $6)""",
             msg_id,
             conversation_id,
             role,
-            content_json,
+            content,
             agent_name,
             datetime.now(UTC),
         )
@@ -465,10 +471,8 @@ class Database:
         mcp_configs: dict | None = None,
         mode: str = "chat",
     ) -> None:
-        import json as _json
-
         now = datetime.now(UTC)
-        mcp_configs_json = _json.dumps(mcp_configs) if mcp_configs else None
+        mcp_configs_val = mcp_configs if mcp_configs else None
         # Delete existing then insert (handles NULL user_id correctly)
         if user_id:
             await self._pool.execute(
@@ -488,7 +492,7 @@ class Database:
                        $10::jsonb, $11, $12)""",
             name, description, prompt_template,
             tools or [], mcp_servers or [], knowledge_areas or [],
-            user_id, parent_agent, max_iterations, mcp_configs_json,
+            user_id, parent_agent, max_iterations, mcp_configs_val,
             mode, now,
         )
 
@@ -589,9 +593,6 @@ class Database:
     async def upsert_mcp_server(
         self, name: str, url: str, headers: dict | None = None
     ) -> None:
-        import json
-
-        headers_json = json.dumps(headers or {})
         await self._pool.execute(
             """INSERT INTO mcp_servers (name, url, headers, updated_at)
                VALUES ($1, $2, $3::jsonb, $4)
@@ -599,7 +600,7 @@ class Database:
                  url = $2, headers = $3::jsonb, updated_at = $4""",
             name,
             url,
-            headers_json,
+            headers or {},
             datetime.now(UTC),
         )
 
@@ -625,9 +626,6 @@ class Database:
     async def set_state(
         self, key: str, data: dict, user_id: str | None = None
     ) -> dict:
-        import json
-
-        data_json = json.dumps(data)
         row = await self._pool.fetchrow(
             """INSERT INTO state (key, user_id, data, updated_at)
                VALUES ($1, $2, $3::jsonb, NOW())
@@ -636,7 +634,7 @@ class Database:
                RETURNING *""",
             key,
             user_id or "",
-            data_json,
+            data,
         )
         return dict(row)
 
@@ -798,9 +796,6 @@ class Database:
         self, name: str, label: str, files: dict[str, str],
         user_id: str | None = None,
     ) -> None:
-        import json
-
-        files_json = json.dumps(files)
         now = datetime.now(UTC)
         # Delete existing then insert (handles NULL user_id correctly)
         if user_id:
@@ -814,7 +809,7 @@ class Database:
         await self._pool.execute(
             """INSERT INTO dashboard_views (name, label, files, user_id, created_at, updated_at)
                VALUES ($1, $2, $3::jsonb, $4, $5, $6)""",
-            name, label, files_json, user_id, now, now,
+            name, label, files, user_id, now, now,
         )
 
     async def get_dashboard_view(self, name: str, user_id: str | None = None) -> dict | None:
@@ -1148,9 +1143,6 @@ class Database:
     async def store_set(
         self, namespace: str, key: str, data: dict, user_id: str | None = None
     ) -> dict:
-        import json
-
-        data_json = json.dumps(data)
         row = await self._pool.fetchrow(
             """INSERT INTO agent_store (namespace, key, user_id, data)
                VALUES ($1, $2, $3, $4::jsonb)
@@ -1160,7 +1152,7 @@ class Database:
             namespace,
             key,
             user_id or "",
-            data_json,
+            data,
         )
         return dict(row)
 
@@ -1172,11 +1164,8 @@ class Database:
         value,
         user_id: str | None = None,
     ) -> dict | None:
-        import json
-
         # Convert dot-notation path to Postgres array: "a.0.b" -> "{a,0,b}"
         pg_path = "{" + path.replace(".", ",") + "}"
-        value_json = json.dumps(value)
         row = await self._pool.fetchrow(
             """UPDATE agent_store
                SET data = jsonb_set(data, $4::text[], $5::jsonb, true),
@@ -1187,7 +1176,7 @@ class Database:
             key,
             user_id or "",
             pg_path,
-            value_json,
+            value,
         )
         return dict(row) if row else None
 
