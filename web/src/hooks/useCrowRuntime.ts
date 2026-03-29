@@ -163,10 +163,11 @@ export function useCrowRuntime(
         timestamp: string
         event_id: string
       }
-      // Replace streaming message with final version
+      // Replace streaming message with final DB version, or append if
+      // this is a post_update arriving after the chat job finished.
       setMessages((prev) => {
         const finalMsg: Message = {
-          id: data.event_id,
+          id: streamingId ?? data.event_id,
           role: 'assistant',
           content: data.text,
           agent_name: data.agent_name,
@@ -174,12 +175,16 @@ export function useCrowRuntime(
         if (streamingId) {
           return prev.map((m) => m.id === streamingId ? finalMsg : m)
         }
+        // Deduplicate: skip if we already have this message
+        if (prev.some((m) => m.id === data.event_id)) return prev
         return [...prev, finalMsg]
       })
-      streamingId = null
-      streamedParts = []
-      setIsRunning(false)
-      setCurrentActivity(null)
+      if (streamingId) {
+        streamingId = null
+        streamedParts = []
+        setIsRunning(false)
+        setCurrentActivity(null)
+      }
     })
 
     return () => source.close()

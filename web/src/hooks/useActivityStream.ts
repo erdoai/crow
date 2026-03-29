@@ -19,7 +19,7 @@ type Action =
   | { type: 'INIT_JOBS'; jobs: Job[] }
   | { type: 'INIT_SCHEDULED'; scheduledJobs: ScheduledJob[] }
   | { type: 'INIT_WORKERS'; workers: Worker[] }
-  | { type: 'JOB_STARTED'; data: { job_id: string; agent_name: string; input?: string; source?: string; mode?: string; conversation_id?: string } }
+  | { type: 'JOB_STARTED'; data: { job_id: string; agent_name: string; input?: string; source?: string; mode?: string; conversation_id?: string; parent_conversation_id?: string } }
   | { type: 'JOB_COMPLETED'; data: { job_id: string } }
   | { type: 'JOB_FAILED'; data: { job_id: string; error?: string } }
   | { type: 'JOB_PROGRESS'; data: { job_id: string; status: string; agent_name?: string } }
@@ -65,7 +65,7 @@ function reducer(state: State, action: Action): State {
         created_at: new Date().toISOString(),
         started_at: new Date().toISOString(),
         completed_at: null,
-        parent_conversation_id: null,
+        parent_conversation_id: action.data.parent_conversation_id || null,
         _events: [],
       }
       return { ...state, jobs: [newJob, ...state.jobs] }

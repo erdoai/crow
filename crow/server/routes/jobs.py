@@ -164,6 +164,7 @@ async def claim_next_job(request: Request, x_worker_key: str = Header()):
             "job_id": job["id"],
             "agent_name": job["agent_name"],
             "conversation_id": job.get("conversation_id"),
+            "parent_conversation_id": job.get("parent_conversation_id"),
             "input": job.get("input", ""),
             "source": job.get("source", "message"),
             "mode": job.get("mode", "chat"),
