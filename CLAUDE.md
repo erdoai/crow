@@ -551,9 +551,12 @@ Keep agents in a local folder (e.g. `./agents/`) and sync with `crow agents sync
 
 Things that have bitten us before — check these when making changes:
 
+- **Think end-to-end before changing anything.** Data flows through multiple layers: DB → server route → event bus → SSE/WebSocket → frontend hook → React component. Before making a change, trace the FULL path from origin to UI. If you add a field to an event, check that every intermediate layer (bus subscriber, SSE serialiser, WS handler, frontend reducer/hook) passes it through. If you change an ID or key, check every place that matches on it. Fixing one layer without checking the others causes cascading bugs.
 - **Auth middleware path matching**: `WORKER_KEY_PREFIXES` in `crow/auth/middleware.py` must NOT have trailing slashes. The middleware uses `startswith()`, so `/scheduled-jobs/` won't match a POST to `/scheduled-jobs`. Always use `/scheduled-jobs` (no trailing slash).
 - **DB migrations and code sync**: When a migration renames or adds a column (e.g. `source` → `source_type`), update ALL queries that reference the old name. `grep` the column name across `crow/db/database.py` before merging.
+- **JSONB content handling**: `messages.content` is JSONB — it comes back from the DB as a Python list, NOT a string. Any code that calls `.startswith()` or `json.loads()` on message content must handle both `list` (JSONB) and `str` (legacy) types.
 - **WebSocket + ASGI middleware**: The auth middleware is raw ASGI (not `BaseHTTPMiddleware`). `BaseHTTPMiddleware` silently drops WebSocket connections — never use it. The current middleware passes `scope["type"] == "websocket"` straight through.
 - **uvicorn + websockets**: The `websockets` pip package is required for uvicorn to handle WebSocket connections. Without it, upgrade requests silently fail with no error message.
 - **TypeScript unused imports**: The tsconfig has `noUnusedLocals` and `noUnusedParameters` enabled. The Docker build runs `tsc -b` and will fail on unused imports/variables. Always run `cd web && npx tsc --noEmit` before committing.
 - **SPA catch-all route**: `/{full_path:path}` in `app.py` catches all GET requests. It explicitly skips `/ws` paths. If you add a new non-API route, make sure it's not swallowed by the catch-all.
+- **Anthropic SDK compatibility**: Don't reference specific exception classes (e.g. `OverloadedError`) that may be removed across SDK versions. Use `APIStatusError` with status code checks instead.

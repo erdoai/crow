@@ -227,6 +227,16 @@ class Database:
             job_id,
         )
 
+    async def append_checkpoint(self, job_id: str, role: str, content) -> None:
+        """Append an intermediate turn to the job checkpoint for resume."""
+        await self._pool.execute(
+            """UPDATE jobs
+               SET checkpoint = checkpoint || $1::jsonb
+               WHERE id = $2""",
+            json.dumps([{"role": role, "content": content}]),
+            job_id,
+        )
+
     async def fail_job(self, job_id: str, error: str) -> None:
         await self._pool.execute(
             """UPDATE jobs

@@ -440,32 +440,19 @@ async def report_result(
 
     if job and job["conversation_id"]:
         is_bg = bool(job.get("parent_conversation_id"))
-
-        # Always save to the job's own conversation
-        msg_id = await db.insert_message(
-            conversation_id=job["conversation_id"],
-            role="assistant",
-            content=result.output,
-            agent_name=agent_name,
-        )
-        await db.link_job_attachments_to_message(job_id, msg_id)
+        # Intermediate turns + final text are already saved to the
+        # conversation via _save_turn. No insert_message here.
+        target_conv_id = job.get("parent_conversation_id") or job["conversation_id"]
+        conv = await db.get_conversation(target_conv_id)
 
         if is_bg:
-            # Background jobs: DON'T post the final result to the parent
-            # thread — that's internal agent output. The agent uses
-            # post_update to surface meaningful results during execution.
-            parent_conv = await db.get_conversation(
-                job["parent_conversation_id"]
-            )
-            if parent_conv and parent_conv.get("user_id"):
+            if conv and conv.get("user_id"):
                 await _send_push_notification(
-                    db, parent_conv["user_id"],
+                    db, conv["user_id"],
                     f"{agent_name} completed",
                     "Background job finished.",
                 )
         else:
-            # Chat jobs: post result to the conversation and notify
-            conv = await db.get_conversation(job["conversation_id"])
             if conv:
                 await bus.publish(
                     Event(
@@ -476,7 +463,6 @@ async def report_result(
                             "conversation_id": job["conversation_id"],
                             "text": result.output,
                             "agent_name": agent_name,
-                            "message_id": msg_id,
                         },
                     )
                 )

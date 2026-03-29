@@ -163,6 +163,11 @@ async def run_agent(
 
     api_messages = build_api_messages(conversation_messages, job["input"])
 
+    # Append checkpoint turns from a previous (crashed) attempt
+    checkpoint = job_data.get("checkpoint") or []
+    for turn in checkpoint:
+        api_messages.append({"role": turn["role"], "content": turn["content"]})
+
     # Inject agent store state before the last user message.
     # Placed here (not in system prompt) to preserve prompt caching.
     await inject_store_state(
@@ -263,6 +268,12 @@ async def run_agent(
                 for b in collected_content:
                     if b["type"] == "text" and b["text"].strip():
                         content_parts.append({"type": "text", "text": b["text"]})
+                # Save the final assistant response as a turn
+                if collected_content:
+                    await _save_turn(
+                        server_url, worker_key, job_id,
+                        "assistant", collected_content,
+                    )
                 return content_parts if content_parts else "(no response)", total_tokens
 
             if stop_reason == "tool_use":
