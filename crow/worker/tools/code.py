@@ -73,13 +73,15 @@ async def _handle_execute_code(inp: dict, ctx: ToolContext) -> str:
 
             parts = []
             if execution.logs.stdout:
-                parts.append(
-                    "stdout:\n" + "\n".join(execution.logs.stdout)
-                )
+                stdout = "\n".join(execution.logs.stdout)
+                if len(stdout) > 8000:
+                    stdout = stdout[:8000] + "\n... (truncated)"
+                parts.append("stdout:\n" + stdout)
             if execution.logs.stderr:
-                parts.append(
-                    "stderr:\n" + "\n".join(execution.logs.stderr)
-                )
+                stderr = "\n".join(execution.logs.stderr)
+                if len(stderr) > 2000:
+                    stderr = stderr[:2000] + "\n... (truncated)"
+                parts.append("stderr:\n" + stderr)
             if execution.error:
                 parts.append(
                     f"error: {execution.error.name}:"
@@ -88,7 +90,10 @@ async def _handle_execute_code(inp: dict, ctx: ToolContext) -> str:
             if execution.results:
                 for r in execution.results:
                     if hasattr(r, "text") and r.text:
-                        parts.append(f"result: {r.text}")
+                        text = r.text
+                        if len(text) > 8000:
+                            text = text[:8000] + "\n... (truncated)"
+                        parts.append(f"result: {text}")
 
             return "\n".join(parts) if parts else "(no output)"
         finally:

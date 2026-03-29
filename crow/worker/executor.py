@@ -152,7 +152,10 @@ async def run_agent(
                 header += f"\nSource: {e['source_ref']}"
             if e.get("updated_at"):
                 header += f"\nUpdated: {e['updated_at']}"
-            parts.append(f"{header}\n{e['content']}")
+            content = e['content']
+            if len(content) > 2000:
+                content = content[:2000] + "\n... (truncated)"
+            parts.append(f"{header}\n{content}")
         system_prompt += "\n\n## Your knowledge\n\n" + "\n\n".join(parts)
 
     # Build messages (with attachment content blocks)

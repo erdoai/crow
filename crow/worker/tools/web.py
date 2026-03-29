@@ -96,6 +96,8 @@ async def _handle_browse_web(inp: dict, ctx: ToolContext) -> str:
 
                 if status == "finished":
                     output = result.get("output", "(no output)")
+                    if isinstance(output, str) and len(output) > 8000:
+                        output = output[:8000] + "\n... (truncated)"
                     success = result.get("success", False)
                     steps = result.get("steps", [])
                     parts = []
