@@ -112,7 +112,7 @@ export default function LoginPage({ onSuccess }: { onSuccess: () => void }) {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-950 via-purple-800 to-purple-600 p-4">
-      <div className="bg-card rounded-xl p-8 w-full max-w-sm shadow-2xl flex flex-col gap-4">
+      <div className="bg-card rounded-2xl border border-white/10 p-8 w-full max-w-sm shadow-2xl flex flex-col gap-4">
         <h1 className="text-3xl font-bold text-primary tracking-tight">crow</h1>
 
         {step === 'loading' && (

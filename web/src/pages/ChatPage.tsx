@@ -226,7 +226,7 @@ export default function ChatPage() {
               <Button variant="ghost" size="icon" className="lg:hidden shrink-0" onClick={() => setSidebarOpen(true)}>
                 <Menu className="h-4 w-4" />
               </Button>
-              <span className="truncate">{threadId}</span>
+              <span className="truncate">{conversations.find(c => c.id === conversationId)?.title || threadId}</span>
             </div>
             <div className="flex-1 min-h-0">
               <AssistantRuntimeProvider runtime={runtime}>
@@ -241,12 +241,19 @@ export default function ChatPage() {
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground p-4">
+          <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center p-8">
             <Button variant="ghost" size="icon" className="lg:hidden absolute top-3 left-3" onClick={() => setSidebarOpen(true)}>
               <Menu className="h-5 w-5" />
             </Button>
-            <MessageSquarePlus className="h-12 w-12 opacity-30" />
-            <p className="text-center">select a conversation or click an agent to start chatting</p>
+            <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
+              <MessageSquarePlus className="h-8 w-8 text-primary" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-foreground">start a conversation</h2>
+              <p className="text-sm text-muted-foreground mt-1 max-w-xs">
+                pick an agent from the sidebar, or open an existing conversation
+              </p>
+            </div>
           </div>
         )}
       </main>

@@ -7,7 +7,7 @@ import {
   useThreadRuntime,
 } from '@assistant-ui/react'
 import { MarkdownTextPrimitive } from '@assistant-ui/react-markdown'
-import { ArrowUp, ArrowDown, Cpu, Layers } from 'lucide-react'
+import { ArrowUp, ArrowDown, Cpu, MessageSquare } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { CurrentActivity } from '@/hooks/useCrowRuntime'
@@ -71,7 +71,10 @@ export function Thread() {
 function EmptyState() {
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground py-20">
-      <p>send a message to get started</p>
+      <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+        <MessageSquare className="h-6 w-6 text-primary/60" />
+      </div>
+      <p className="text-sm">what can I help you with?</p>
     </div>
   )
 }
@@ -142,28 +145,16 @@ function ToolCallDisplay({ toolName, args, result }: { toolName: string; args: R
 }
 
 function Composer() {
-  const { enabled: bgMode, toggle: toggleBg } = useContext(BackgroundModeContext)
-
   return (
-    <ComposerPrimitive.Root className="px-3 py-2 sm:px-6 sm:py-3 border-t bg-card flex gap-2 items-end">
-      <Button
-        variant="ghost"
-        size="icon"
-        className={cn('rounded-full shrink-0', bgMode && 'text-primary bg-primary/10')}
-        onClick={toggleBg}
-        title={bgMode ? 'Background mode (click to disable)' : 'Send as background job'}
-      >
-        <Layers className="h-4 w-4" />
-      </Button>
+    <ComposerPrimitive.Root className="px-3 py-3 sm:px-6 sm:py-4 border-t bg-card/80 backdrop-blur-sm flex gap-2 items-end">
       <ComposerPrimitive.Input
-        placeholder={bgMode ? 'Background task...' : 'Message...'}
+        placeholder="Message..."
         autoFocus
         className={cn(
-          'flex-1 rounded-full border border-input bg-background px-4 py-2 text-sm',
+          'flex-1 rounded-xl border border-input bg-background px-4 py-3 text-sm min-h-[3.5rem] resize-none',
           'placeholder:text-muted-foreground',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
           'disabled:cursor-not-allowed disabled:opacity-50',
-          bgMode && 'border-primary/50',
         )}
       />
       <ComposerPrimitive.Send asChild>

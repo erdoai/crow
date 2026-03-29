@@ -8,6 +8,14 @@ import { Badge } from '@/components/ui/badge'
 import { LogOut, Key, Brain, MessageSquare, Cpu, Download, Upload, Check, Link, LayoutDashboard } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme-toggle'
 
+function getGreeting(): string {
+  const hour = new Date().getHours()
+  if (hour >= 5 && hour < 12) return 'good morning'
+  if (hour >= 12 && hour < 17) return 'good afternoon'
+  if (hour >= 17 && hour < 21) return 'good evening'
+  return 'hey'
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate()
   const [data, setData] = useState<DashboardData | null>(null)
@@ -105,25 +113,24 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="bg-primary text-primary-foreground px-4 py-3 flex items-center justify-between gap-2 sm:px-6 sm:py-4">
-        <h1 className="text-xl font-bold tracking-tight shrink-0">crow</h1>
-        <div className="flex items-center gap-1 sm:gap-4 flex-wrap justify-end">
-          <span className="text-sm opacity-90 hidden sm:inline">hi, {data.display_name}</span>
+      <header className="bg-background border-b px-4 py-3 flex items-center justify-between gap-2 sm:px-6 sm:py-4">
+        <h1 className="text-xl font-bold tracking-tight shrink-0 text-primary">crow</h1>
+        <div className="flex items-center gap-1 sm:gap-3 flex-wrap justify-end">
           {views.map(v => (
             <a key={v.name} href={v.url}>
-              <Button variant="ghost" size="sm" className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10">
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
                 <LayoutDashboard className="h-4 w-4 sm:mr-1" />
                 <span className="hidden sm:inline">{v.label}</span>
               </Button>
             </a>
           ))}
-          <Button variant="ghost" size="sm" onClick={() => navigate('/chat')} className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10">
+          <Button variant="ghost" size="sm" onClick={() => navigate('/chat')} className="text-muted-foreground hover:text-foreground">
             <MessageSquare className="h-4 w-4 sm:mr-1" />
             <span className="hidden sm:inline">chat</span>
           </Button>
-          <ThemeToggle className="text-primary-foreground/70 hover:text-primary-foreground [&_button]:hover:bg-white/10" />
+          <ThemeToggle />
           {data.auth_enabled && (
-            <Button variant="ghost" size="sm" onClick={logout} className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10">
+            <Button variant="ghost" size="sm" onClick={logout} className="text-muted-foreground hover:text-foreground">
               <LogOut className="h-4 w-4" />
             </Button>
           )}
@@ -131,6 +138,11 @@ export default function DashboardPage() {
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-4 sm:p-6 flex flex-col gap-6 sm:gap-8">
+        {/* Greeting */}
+        <div className="pt-2">
+          <h2 className="text-2xl font-semibold tracking-tight">{getGreeting()}, {data.display_name}</h2>
+          <p className="text-sm text-muted-foreground mt-1">here's what's happening with your agents</p>
+        </div>
         {/* Agents */}
         <section>
           <div className="flex items-center justify-between mb-3">
@@ -152,13 +164,13 @@ export default function DashboardPage() {
             {data.agents.map(agent => (
               <Card
                 key={agent.name}
-                className="cursor-pointer hover:border-primary/30 transition-colors"
+                className="group cursor-pointer border-l-2 border-l-primary/30 hover:border-primary/30 hover:shadow-md transition-all"
                 onClick={() => startChatWithAgent(agent.name)}
               >
                 <CardHeader className="p-4">
                   <CardTitle className="text-base text-primary">{agent.name}</CardTitle>
                   <CardDescription>{agent.description}</CardDescription>
-                  <div className="flex gap-1 pt-2">
+                  <div className="flex gap-1 pt-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     <Button variant="ghost" size="xs" onClick={e => exportAgent(agent.name, e)} title="export as .md">
                       <Download className="h-3.5 w-3.5" />
                     </Button>
@@ -172,7 +184,7 @@ export default function DashboardPage() {
                 </CardHeader>
               </Card>
             ))}
-            {data.agents.length === 0 && <p className="text-sm text-muted-foreground">no agents configured</p>}
+            {data.agents.length === 0 && <p className="text-sm text-muted-foreground">no agents yet — create your first one to get started</p>}
           </div>
         </section>
 
@@ -223,7 +235,7 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">no knowledge entries yet</p>
+            <p className="text-sm text-muted-foreground">your agents will build up knowledge here as they learn</p>
           )}
         </section>
 
@@ -251,7 +263,7 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">no conversations yet</p>
+            <p className="text-sm text-muted-foreground">start a conversation with any agent above</p>
           )}
         </section>
       </main>
