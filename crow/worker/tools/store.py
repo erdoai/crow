@@ -75,6 +75,44 @@ async def _handle_store_set(inp: dict, ctx: ToolContext) -> str:
 
 
 @builtin_tool(
+    name="store_append",
+    description=(
+        "Atomically append items to an array in the store. "
+        "Creates the key if it doesn't exist. Use this to save "
+        "results incrementally — e.g. append new leads as you find them."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "key": {
+                "type": "string",
+                "description": "Key containing the array",
+            },
+            "items": {
+                "type": "array",
+                "description": "Items to append",
+            },
+            "namespace": {
+                "type": "string",
+                "description": "Namespace (defaults to current agent name)",
+            },
+        },
+        "required": ["key", "items"],
+    },
+)
+async def _handle_store_append(inp: dict, ctx: ToolContext) -> str:
+    ns = inp.get("namespace") or ctx.job.get("agent_name", "default")
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{ctx.server_url}/api/store/{ns}/{inp['key']}/append",
+            headers=ctx.headers,
+            json={"items": inp["items"]},
+            timeout=10,
+        )
+        return resp.text
+
+
+@builtin_tool(
     name="store_update",
     description=(
         "Partially update a value in the agent store using a dot-notation "

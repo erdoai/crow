@@ -100,6 +100,30 @@ async def set_value(
     }
 
 
+class StoreAppendPayload(BaseModel):
+    items: list
+
+
+@router.post("/{namespace}/{key}/append")
+async def append_value(
+    namespace: str, key: str, payload: StoreAppendPayload, request: Request
+):
+    """Atomically append items to an array in the store.
+
+    Creates the key with the items if it doesn't exist.
+    """
+    user = await get_current_user(request)
+    uid = _resolve_uid(request, user)
+    db = request.app.state.db
+    row = await db.store_append(namespace, key, payload.items, user_id=uid)
+    return {
+        "namespace": namespace,
+        "key": key,
+        "count": len(row["data"]) if isinstance(row["data"], list) else 0,
+        "updated_at": row["updated_at"].isoformat(),
+    }
+
+
 @router.patch("/{namespace}/{key}")
 async def update_value(
     namespace: str, key: str, payload: StoreUpdatePayload, request: Request

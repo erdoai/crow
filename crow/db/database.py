@@ -1180,6 +1180,23 @@ class Database:
         )
         return dict(row)
 
+    async def store_append(
+        self, namespace: str, key: str, items: list, user_id: str | None = None
+    ) -> dict:
+        """Atomically append items to an array. Creates if not exists."""
+        row = await self._pool.fetchrow(
+            """INSERT INTO agent_store (namespace, key, user_id, data)
+               VALUES ($1, $2, $3, $4::jsonb)
+               ON CONFLICT (namespace, key, user_id)
+               DO UPDATE SET data = agent_store.data || $4::jsonb, updated_at = NOW()
+               RETURNING *""",
+            namespace,
+            key,
+            user_id or "",
+            items,
+        )
+        return dict(row)
+
     async def store_update(
         self,
         namespace: str,
