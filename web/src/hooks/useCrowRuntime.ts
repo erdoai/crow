@@ -5,6 +5,7 @@ import {
   type AppendMessage,
 } from '@assistant-ui/react'
 import { fetchJSON, type Message, type ContentPart } from '../api'
+import { hasRenderer } from '../renderers/registry'
 
 export interface CurrentActivity {
   type: 'tool' | 'progress' | 'thinking'
@@ -161,6 +162,10 @@ export function useCrowRuntime(
     (msg: Message): ThreadMessageLike => {
       let content: ThreadMessageLike['content']
 
+      // Collect custom content parts (chart, etc.) for pluggable renderers
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const richParts: Record<string, any>[] = []
+
       if (msg.role === 'assistant' && Array.isArray(msg.content)) {
         // Structured content from JSONB — map to assistant-ui format
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -181,6 +186,8 @@ export function useCrowRuntime(
             })
           } else if (p.type === 'tool_result') {
             continue
+          } else if (hasRenderer(p.type)) {
+            richParts.push(p)
           } else if (p.text?.trim()) {
             built.push({ type: 'text', text: p.text })
           }
@@ -191,13 +198,15 @@ export function useCrowRuntime(
         content = [{ type: 'text', text }]
       }
 
+      const custom: Record<string, unknown> = {}
+      if (msg.role === 'assistant' && msg.agent_name) custom.agentName = msg.agent_name
+      if (richParts.length > 0) custom.richParts = richParts
+
       return {
         id: msg.id,
         role: msg.role,
         content,
-        ...(msg.role === 'assistant' && msg.agent_name
-          ? { metadata: { custom: { agentName: msg.agent_name } } }
-          : {}),
+        ...(Object.keys(custom).length > 0 ? { metadata: { custom } } : {}),
       }
     },
     [],

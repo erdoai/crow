@@ -8,6 +8,7 @@ import {
 } from '@assistant-ui/react'
 import { MarkdownTextPrimitive } from '@assistant-ui/react-markdown'
 import { ArrowUp, ArrowDown, Cpu, MessageSquare } from 'lucide-react'
+import { getRenderer } from '@/renderers/registry'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { CurrentActivity } from '@/hooks/useCrowRuntime'
@@ -92,6 +93,11 @@ function UserMessage() {
 }
 
 function AssistantMessage() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const richParts = useMessage(
+    (m) => (m.metadata?.custom as Record<string, unknown> | undefined)?.richParts as Record<string, any>[] | undefined,
+  )
+
   return (
     <MessagePrimitive.Root className="flex flex-col max-w-[85%] sm:max-w-[70%] self-start items-start">
       <AgentLabel />
@@ -102,6 +108,10 @@ function AssistantMessage() {
             tools: { Fallback: ToolCallDisplay },
           }}
         />
+        {richParts?.map((part, i) => {
+          const Renderer = getRenderer(part.type as string)
+          return Renderer ? <Renderer key={i} data={part} /> : null
+        })}
       </div>
     </MessagePrimitive.Root>
   )

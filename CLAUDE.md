@@ -250,6 +250,66 @@ Parameters: `code` (required), `packages` (optional list of pip packages to inst
 
 Returns stdout, stderr, errors, and cell results. Requires `E2B_API_KEY` environment variable on the worker.
 
+### Content renderers (plugin system)
+
+Messages store structured content as a JSONB array of typed parts. The `type` field is the extension point — agents can emit any custom type, and **content renderers** transform those parts into visual output (React components in the web UI, Rich renderables in the terminal). No core code changes needed to add new types.
+
+**Built-in content types:** `text`, `tool_call`, `tool_result`, `progress`, `chart`
+
+**Content part schema for charts:**
+
+```json
+{
+  "type": "chart",
+  "chart_type": "bar",
+  "title": "Revenue by Quarter",
+  "data": [
+    {"label": "Q1", "value": 45},
+    {"label": "Q2", "value": 58},
+    {"label": "Q3", "value": 72}
+  ]
+}
+```
+
+`chart_type` supports `bar` (horizontal bar chart) and `line` (line chart with area fill). Both render as inline SVG in the web UI and as ASCII art (Rich panels) in the terminal.
+
+**Registering a custom renderer (web):**
+
+```typescript
+import { registerRenderer } from '@/renderers/registry'
+
+function MyWidget({ data }: { data: Record<string, any> }) {
+  return <div>{data.title}: {data.value}</div>
+}
+
+registerRenderer('my-widget', MyWidget)
+```
+
+Built-in web renderers are auto-registered via `web/src/renderers/index.ts` (imported in `main.tsx`). The rendering pipeline in `useCrowRuntime.ts` collects custom-type parts into `metadata.custom.richParts`, and `AssistantMessage` in `thread.tsx` renders them via the registry.
+
+**Registering a custom renderer (Python/terminal):**
+
+```python
+from crow.renderers import register_renderer
+
+class MyRenderer:
+    content_type = "my-widget"
+
+    def render(self, data: dict) -> str:
+        return f"Widget: {data['title']}"
+
+register_renderer(MyRenderer())
+```
+
+Built-in Python renderers are auto-registered when `crow.renderers` is imported. Use `render_part(part)` or `render_message_content(parts)` to render content for terminal display.
+
+**Key files:**
+- `crow/renderers/__init__.py` — Python registry (`ContentRenderer` protocol, `register_renderer`, `render_part`)
+- `crow/renderers/chart.py` — Bar + line chart renderer (Rich/ASCII)
+- `web/src/renderers/registry.ts` — Web registry (`registerRenderer`, `getRenderer`)
+- `web/src/renderers/chart.tsx` — SVG bar + line chart components
+- `web/src/renderers/index.ts` — Auto-registers built-in web renderers
+
 ### Custom dashboard API contract
 
 Custom dashboards are plain HTML/JS/CSS served from a directory. They connect to Crow via these endpoints:
@@ -478,6 +538,7 @@ Keep agents in a local folder (e.g. `./agents/`) and sync with `crow agents sync
 - Web dashboard served from FastAPI (React SPA + Vite). Purple theme. Custom HTML dashboards served alongside via `dashboard.views` in `crow.yml`.
 - State channel (`state` table): per-user key/value store with SSE streaming. External processes push state via REST, dashboards subscribe via SSE. Agent events (message.*, job.*) piped into the same stream.
 - WebSocket (`/ws`): activity stream with catch-up replay. Replaces SSE for the main activity feed. Clients get an ephemeral token via `POST /ws/token`, connect with `last_seq` for replay on reconnect. Server buffers last 500 events per user.
+- Content renderers: pluggable registry for custom content-part types (`crow/renderers/` for Python, `web/src/renderers/` for React). Agents emit custom types in JSONB content arrays; renderers transform them for display. Chart renderer is built-in.
 - Zombie job reaper: background task marks jobs as failed if running >10m with no worker heartbeat.
 - API keys generated from dashboard, bearer token auth for programmatic access.
 

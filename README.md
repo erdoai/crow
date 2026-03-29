@@ -305,6 +305,57 @@ You are a data analyst. Write and execute Python code to answer questions.
 
 The tool supports installing pip packages before execution and returns stdout, stderr, and results. Set `E2B_API_KEY` in your environment.
 
+## Content renderers
+
+Agents can output rich content — charts, tables, or any custom visualization — without changing core Crow code. The renderer plugin system works in both the web UI (React components) and the terminal (Rich/ASCII).
+
+Agents emit custom content types in their message responses:
+
+```json
+{
+  "type": "chart",
+  "chart_type": "bar",
+  "title": "Revenue by Quarter",
+  "data": [
+    {"label": "Q1", "value": 45},
+    {"label": "Q2", "value": 58},
+    {"label": "Q3", "value": 72}
+  ]
+}
+```
+
+The built-in `chart` renderer supports `bar` and `line` chart types — inline SVG in the web dashboard, ASCII art in the terminal.
+
+### Adding a custom renderer
+
+**Web (React):**
+
+```typescript
+import { registerRenderer } from '@/renderers/registry'
+
+function MyWidget({ data }: { data: Record<string, any> }) {
+  return <div>{data.title}: {data.value}</div>
+}
+
+registerRenderer('my-widget', MyWidget)
+```
+
+**Terminal (Python):**
+
+```python
+from crow.renderers import register_renderer
+
+class MyRenderer:
+    content_type = "my-widget"
+
+    def render(self, data: dict) -> str:
+        return f"Widget: {data['title']}"
+
+register_renderer(MyRenderer())
+```
+
+No core code changes needed — just register your renderer and any agent that emits `{"type": "my-widget", ...}` gets custom rendering automatically.
+
 ## Gateways
 
 - **HTTP API** — `POST /messages` for programmatic access (JSON or multipart with file uploads)

@@ -51,6 +51,8 @@ export type ContentPart = {
   input?: Record<string, unknown>
   result?: string
   content?: string
+  /** Allow custom fields for pluggable content types (e.g. chart data). */
+  [key: string]: unknown
 }
 
 export interface Message {
