@@ -262,6 +262,7 @@ class Database:
         source: str | None = None,
         limit: int = 50,
         user_id: str | None = None,
+        max_age_hours: int | None = None,
     ) -> list[dict]:
         conditions = []
         params: list = []
@@ -283,6 +284,9 @@ class Database:
             conditions.append(f"j.source = ${idx}")
             params.append(source)
             idx += 1
+
+        if max_age_hours is not None:
+            conditions.append(f"j.created_at > NOW() - INTERVAL '{int(max_age_hours)} hours'")
 
         where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
         params.append(limit)

@@ -56,12 +56,17 @@ async def list_jobs(
     status: str | None = None,
     source: str | None = None,
     limit: int = 50,
+    max_age_hours: int | None = 48,
 ):
-    """List recent jobs."""
+    """List recent jobs. Defaults to last 48 hours; pass max_age_hours=0 for all."""
     user = await get_current_user(request)
     uid = _user_id_from_request(request, user)
     db = request.app.state.db
-    return await db.list_jobs(status=status, source=source, limit=limit, user_id=uid)
+    age = max_age_hours if max_age_hours else None
+    return await db.list_jobs(
+        status=status, source=source, limit=limit,
+        user_id=uid, max_age_hours=age,
+    )
 
 
 @router.get("/{job_id}")
