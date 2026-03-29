@@ -39,6 +39,21 @@ async def _is_job_cancelled(
     return False
 
 
+async def _send_heartbeat(
+    server_url: str, worker_key: str, job_id: str
+) -> None:
+    """Tell the server this job is still alive — resets the reaper clock."""
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                f"{server_url}/jobs/{job_id}/heartbeat",
+                headers={"x-worker-key": worker_key},
+                timeout=5,
+            )
+    except Exception:
+        logger.warning("Failed to send heartbeat for job %s", job_id)
+
+
 async def _save_turn(
     server_url: str,
     worker_key: str,
@@ -241,6 +256,9 @@ async def run_agent(
             stop_reason = response.stop_reason
             total_tokens += response.usage_input + response.usage_output
 
+            # Reset reaper clock after each LLM call
+            await _send_heartbeat(server_url, worker_key, job_id)
+
             if stop_reason == "end_turn":
                 for b in collected_content:
                     if b["type"] == "text" and b["text"].strip():
@@ -311,6 +329,9 @@ async def run_agent(
                 tool_results = await asyncio.gather(
                     *[_exec_tool(b) for b in tool_blocks]
                 )
+
+                # Tell the server we're still alive after tool execution
+                await _send_heartbeat(server_url, worker_key, job_id)
 
                 # Add all parts chronologically: text, tool calls, tool results
                 for b in collected_content:

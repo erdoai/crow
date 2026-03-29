@@ -571,8 +571,10 @@ async def job_heartbeat(
     request: Request,
     x_worker_key: str = Header(),
 ):
-    """Worker reports job is still running."""
+    """Worker reports job is still running — resets the reaper clock."""
     _check_worker_key(request, x_worker_key)
+    db = request.app.state.db
+    await db.job_heartbeat(job_id)
     return {"status": "ok"}
 
 

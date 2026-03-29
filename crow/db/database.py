@@ -312,6 +312,14 @@ class Database:
             datetime.now(UTC),
         )
 
+    async def job_heartbeat(self, job_id: str) -> None:
+        """Reset started_at so the reaper knows the job is still alive."""
+        await self._pool.execute(
+            "UPDATE jobs SET started_at = $1 WHERE id = $2 AND status = 'running'",
+            datetime.now(UTC),
+            job_id,
+        )
+
     async def worker_heartbeat(self, worker_id: str, status: str = "idle") -> None:
         await self._pool.execute(
             "UPDATE workers SET last_heartbeat = $1, status = $2 WHERE id = $3",
