@@ -44,6 +44,99 @@ def _http():
     return httpx.Client(headers=_auth_headers(), timeout=30.0)
 
 
+async def _wait_for_response(server_url: str, thread_id: str) -> None:
+    """Subscribe to conversation SSE and render the agent response."""
+    import json
+
+    import httpx
+    from rich.live import Live
+    from rich.text import Text
+
+    from crow.renderers import render_part
+
+    headers = _auth_headers()
+
+    # Find conversation by thread_id
+    async with httpx.AsyncClient(headers=headers, timeout=10) as client:
+        convos = (await client.get(f"{server_url}/conversations")).json()
+    conv = next(
+        (c for c in convos if c.get("gateway_thread_id") == thread_id), None
+    )
+    if not conv:
+        console.print("[red]Could not find conversation[/red]")
+        return
+
+    conv_id = conv["id"]
+    stream_url = f"{server_url}/conversations/{conv_id}/stream"
+    streaming_text = ""
+    agent_name: str | None = None
+
+    with Live(Text("waiting...", style="dim"), console=console, refresh_per_second=8) as live:
+        async with httpx.AsyncClient(headers=headers, timeout=None) as client:
+            async with client.stream("GET", stream_url) as resp:
+                event_type = ""
+                data_buf = ""
+                async for line in resp.aiter_lines():
+                    if line.startswith("event:"):
+                        event_type = line[6:].strip()
+                        continue
+                    if line.startswith("data:"):
+                        data_buf = line[5:].strip()
+                    elif line == "" and data_buf:
+                        # Process complete SSE event
+                        payload = json.loads(data_buf)
+                        data_buf = ""
+
+                        if event_type == "chunk":
+                            if payload.get("type") == "text" and payload.get("text"):
+                                streaming_text += payload["text"]
+                                live.update(Text(streaming_text))
+                            elif payload.get("type") == "tool_call":
+                                name = payload.get("tool_name", "?")
+                                agent_name = payload.get("agent_name") or agent_name
+                                live.update(Text(f"calling {name}...", style="cyan"))
+                            elif payload.get("type") == "tool_result":
+                                live.update(Text(streaming_text or "thinking...", style="dim"))
+
+                        elif event_type == "progress":
+                            status = payload.get("status", "")
+                            agent_name = payload.get("agent_name") or agent_name
+                            live.update(Text(status, style="cyan"))
+
+                        elif event_type == "message":
+                            # Final message — render and exit
+                            agent_name = payload.get("agent_name") or agent_name
+                            live.update(Text(""))
+                            break
+
+                        event_type = ""
+
+    # Render the final message
+    if agent_name:
+        console.print(f"[bold cyan]{agent_name}[/bold cyan]")
+
+    # Fetch the final message content from the API
+    async with httpx.AsyncClient(headers=headers, timeout=10) as client:
+        messages = (
+            await client.get(f"{server_url}/conversations/{conv_id}/messages")
+        ).json()
+
+    if not messages:
+        return
+
+    last = messages[-1]
+    content = last.get("content", "")
+
+    if isinstance(content, list):
+        for part in content:
+            if part.get("type") in ("tool_call", "tool_result", "tool_use"):
+                continue
+            rendered = render_part(part)
+            console.print(rendered)
+    elif isinstance(content, str) and content:
+        console.print(content)
+
+
 @app.command()
 def serve(
     host: str = typer.Option("0.0.0.0", help="Host to bind to"),
@@ -86,14 +179,24 @@ def message(
     server_url: str = typer.Option(
         DEFAULT_URL, "--url", help="Crow server URL"
     ),
+    wait: bool = typer.Option(
+        False, "--wait", "-w", help="Wait for the agent response and render it"
+    ),
 ):
     """Send a message to an agent (via API gateway)."""
+    thread_id = f"cli-{agent}"
     resp = _http().post(
         f"{server_url}/messages",
-        json={"text": text, "agent": agent, "thread_id": f"cli-{agent}"},
+        json={"text": text, "agent": agent, "thread_id": thread_id},
     )
     resp.raise_for_status()
-    console.print(f"[green]Message sent[/green]: {text}")
+
+    if not wait:
+        console.print(f"[green]Message sent[/green]: {text}")
+        return
+
+    console.print(f"[dim]→ {text}[/dim]")
+    asyncio.run(_wait_for_response(server_url, thread_id))
 
 
 @app.command()
