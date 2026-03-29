@@ -129,6 +129,33 @@ export function useCrowRuntime(
       })
     })
 
+    source.addEventListener('error', (e) => {
+      if (!(e instanceof MessageEvent)) return
+      const data = JSON.parse(e.data) as {
+        error: string
+        agent_name: string | null
+        job_id: string
+      }
+      // Show the error as a final assistant message
+      const id = streamingId || `error-${data.job_id}`
+      const errorMsg: Message = {
+        id,
+        role: 'assistant',
+        content: [{ type: 'text', text: `Error: ${data.error}` }],
+        agent_name: data.agent_name,
+      }
+      setMessages((prev) => {
+        if (streamingId) {
+          return prev.map((m) => m.id === streamingId ? errorMsg : m)
+        }
+        return [...prev, errorMsg]
+      })
+      streamingId = null
+      streamedParts = []
+      setIsRunning(false)
+      setCurrentActivity(null)
+    })
+
     source.addEventListener('message', (e) => {
       const data = JSON.parse(e.data) as {
         text: string | ContentPart[]

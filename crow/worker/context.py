@@ -5,16 +5,21 @@ import json
 import httpx
 
 
-def _parse_structured_content(content: str) -> str | list[dict]:
-    """Parse message content, returning structured blocks if JSON-encoded."""
-    if content and content.startswith("["):
+def _parse_structured_content(content) -> str | list[dict]:
+    """Parse message content, returning structured blocks if JSON-encoded.
+
+    Content may arrive as a string (legacy) or already-decoded list (JSONB).
+    """
+    if isinstance(content, list):
+        return content
+    if content and isinstance(content, str) and content.startswith("["):
         try:
             parsed = json.loads(content)
             if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict):
                 return parsed
         except (json.JSONDecodeError, KeyError):
             pass
-    return content
+    return content or ""
 
 
 def build_api_messages(
@@ -27,10 +32,15 @@ def build_api_messages(
         attachments = msg.get("attachments") or []
         if attachments:
             content_blocks = []
-            if msg["content"]:
-                content_blocks.append(
-                    {"type": "text", "text": msg["content"]}
-                )
+            raw = msg["content"]
+            if raw:
+                parsed = _parse_structured_content(raw)
+                if isinstance(parsed, list):
+                    content_blocks.extend(parsed)
+                else:
+                    content_blocks.append(
+                        {"type": "text", "text": parsed}
+                    )
             for att in attachments:
                 ct = att["content_type"]
                 if ct.startswith("image/"):

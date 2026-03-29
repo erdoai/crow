@@ -545,14 +545,18 @@ async def report_error(
     db = request.app.state.db
     await db.fail_job(job_id, err.error)
 
+    job = await db.get_job(job_id)
+
     bus = request.app.state.bus
     await bus.publish(Event(
         type=JOB_FAILED,
-        data={"job_id": job_id, "error": err.error},
+        data={
+            "job_id": job_id,
+            "error": err.error,
+            "conversation_id": job["conversation_id"] if job else None,
+            "agent_name": job["agent_name"] if job else None,
+        },
     ))
-
-    # Push notification on failure
-    job = await db.get_job(job_id)
     if job and job.get("conversation_id"):
         conv = await db.get_conversation(job["conversation_id"])
         if conv and conv.get("user_id"):

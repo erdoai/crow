@@ -8,7 +8,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
 from crow.auth.dependencies import get_current_user
-from crow.events.types import JOB_PROGRESS, MESSAGE_CHUNK, MESSAGE_RESPONSE, Event
+from crow.events.types import JOB_FAILED, JOB_PROGRESS, MESSAGE_CHUNK, MESSAGE_RESPONSE, Event
 from crow.server.routes.conversations import _verify_conversation_access
 
 logger = logging.getLogger(__name__)
@@ -32,6 +32,7 @@ async def stream_conversation(conversation_id: str, request: Request):
     bus.subscribe(MESSAGE_RESPONSE, handler)
     bus.subscribe(MESSAGE_CHUNK, handler)
     bus.subscribe(JOB_PROGRESS, handler)
+    bus.subscribe(JOB_FAILED, handler)
 
     async def event_generator():
         try:
@@ -63,6 +64,13 @@ async def stream_conversation(conversation_id: str, request: Request):
                             "data": event.data.get("data"),
                         })
                         yield f"id: {event.id}\nevent: progress\ndata: {data}\n\n"
+                    elif event.type == JOB_FAILED:
+                        data = json.dumps({
+                            "error": event.data.get("error"),
+                            "agent_name": event.data.get("agent_name"),
+                            "job_id": event.data.get("job_id"),
+                        })
+                        yield f"id: {event.id}\nevent: error\ndata: {data}\n\n"
                     else:
                         data = json.dumps({
                             "text": event.data["text"],

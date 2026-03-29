@@ -98,6 +98,16 @@ function AssistantMessage() {
     (m) => (m.metadata?.custom as Record<string, unknown> | undefined)?.richParts as Record<string, any>[] | undefined,
   )
 
+  // Hide the empty placeholder bubble that assistant-ui creates while
+  // isRunning is true — the TypingIndicator already covers this state.
+  const isEmpty = useMessage((m) => {
+    if (m.content.length === 0) return true
+    return m.content.every(
+      (p) => p.type === 'text' && ('text' in p ? (p.text as string).trim() === '' : true),
+    )
+  })
+  if (isEmpty) return null
+
   return (
     <MessagePrimitive.Root className="flex flex-col max-w-[85%] sm:max-w-[70%] self-start items-start">
       <AgentLabel />
