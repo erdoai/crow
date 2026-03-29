@@ -76,7 +76,7 @@ async def stream_conversation(conversation_id: str, request: Request):
                             "text": event.data["text"],
                             "agent_name": event.data.get("agent_name"),
                             "timestamp": event.timestamp.isoformat(),
-                            "event_id": event.id,
+                            "event_id": event.data.get("message_id") or event.id,
                         })
                         yield f"id: {event.id}\nevent: message\ndata: {data}\n\n"
                 except TimeoutError:

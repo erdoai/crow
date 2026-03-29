@@ -62,13 +62,10 @@ async def call_llm_with_fallback(
     primary = resolve_model(settings.anthropic_model, settings)
     try:
         return await call_llm(primary, system, messages, tools, on_event)
-    except (anthropic.OverloadedError, anthropic.APIStatusError) as e:
+    except anthropic.APIStatusError as e:
         if not settings.fallback_model or not settings.openai_api_key:
             raise
-        is_overloaded = (
-            isinstance(e, anthropic.OverloadedError)
-            or (hasattr(e, "status_code") and e.status_code == 529)
-        )
+        is_overloaded = hasattr(e, "status_code") and e.status_code == 529
         if not is_overloaded:
             raise
         logger.warning(

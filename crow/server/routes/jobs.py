@@ -438,48 +438,53 @@ async def report_result(
     ))
 
     if job and job["conversation_id"]:
-        # Background jobs with a parent conversation: post the final
-        # result to the PARENT conversation (the user's chat thread).
-        # Also save to the bg job's own conversation for full history.
-        target_conv_id = job.get("parent_conversation_id") or job["conversation_id"]
-        conv = await db.get_conversation(target_conv_id)
+        is_bg = bool(job.get("parent_conversation_id"))
 
+        # Always save to the job's own conversation
         msg_id = await db.insert_message(
-            conversation_id=target_conv_id,
+            conversation_id=job["conversation_id"],
             role="assistant",
             content=result.output,
             agent_name=agent_name,
         )
         await db.link_job_attachments_to_message(job_id, msg_id)
 
-        # Also save to the bg job's own conversation if different
-        if job.get("parent_conversation_id") and job["conversation_id"] != target_conv_id:
-            await db.insert_message(
-                conversation_id=job["conversation_id"],
-                role="assistant",
-                content=result.output,
-                agent_name=agent_name,
+        if is_bg:
+            # Background jobs: DON'T post the final result to the parent
+            # thread — that's internal agent output. The agent uses
+            # post_update to surface meaningful results during execution.
+            parent_conv = await db.get_conversation(
+                job["parent_conversation_id"]
             )
-
-        if conv:
-            await bus.publish(
-                Event(
-                    type=MESSAGE_RESPONSE,
-                    data={
-                        "gateway": conv["gateway"],
-                        "gateway_thread_id": conv["gateway_thread_id"],
-                        "conversation_id": target_conv_id,
-                        "text": result.output,
-                        "agent_name": agent_name,
-                    },
-                )
-            )
-            if conv.get("user_id"):
+            if parent_conv and parent_conv.get("user_id"):
                 await _send_push_notification(
-                    db, conv["user_id"],
+                    db, parent_conv["user_id"],
                     f"{agent_name} completed",
-                    str(result.output)[:100],
+                    "Background job finished.",
                 )
+        else:
+            # Chat jobs: post result to the conversation and notify
+            conv = await db.get_conversation(job["conversation_id"])
+            if conv:
+                await bus.publish(
+                    Event(
+                        type=MESSAGE_RESPONSE,
+                        data={
+                            "gateway": conv["gateway"],
+                            "gateway_thread_id": conv["gateway_thread_id"],
+                            "conversation_id": job["conversation_id"],
+                            "text": result.output,
+                            "agent_name": agent_name,
+                            "message_id": msg_id,
+                        },
+                    )
+                )
+                if conv.get("user_id"):
+                    await _send_push_notification(
+                        db, conv["user_id"],
+                        f"{agent_name} completed",
+                        str(result.output)[:100],
+                    )
 
     return {"status": "ok"}
 
@@ -646,6 +651,7 @@ async def post_update_message(
                 "conversation_id": target_conv_id,
                 "text": payload.text,
                 "agent_name": agent_name,
+                "message_id": msg_id,
             },
         ))
 
