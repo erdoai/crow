@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { fetchJSON, type Agent, type Conversation } from '../api'
 import { useCrowRuntime } from '../hooks/useCrowRuntime'
@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import { MessageSquarePlus, ChevronDown, ChevronRight, Menu, X } from 'lucide-react'
+import { MessageSquarePlus, ChevronDown, ChevronRight, Menu, X, Circle } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme-toggle'
 import ActivitySection from '@/components/activity/ActivitySection'
 import StoreSection from '@/components/store/StoreSection'
@@ -60,6 +60,17 @@ export default function ChatPage() {
 
   // Toast + browser notifications for job status changes
   useJobNotifications(jobs, conversationId ?? null)
+
+  // Conversations with running/pending jobs (including bg jobs via parent_conversation_id)
+  const activeConversationIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const j of jobs) {
+      if (j.status !== 'running' && j.status !== 'pending') continue
+      if (j.conversation_id) ids.add(j.conversation_id)
+      if (j.parent_conversation_id) ids.add(j.parent_conversation_id)
+    }
+    return ids
+  }, [jobs])
 
   async function startChatWithAgent(agentName: string) {
     const newThreadId = `chat-${agentName}-${Date.now()}`
@@ -196,8 +207,11 @@ export default function ChatPage() {
                     )}
                     onClick={() => navigateAndCloseSidebar(`/chat/${c.id}`)}
                   >
-                    <div className="truncate text-sm">
-                      {c.title || c.gateway_thread_id}
+                    <div className="flex items-center gap-1.5 truncate text-sm">
+                      {activeConversationIds.has(c.id) && (
+                        <Circle className="h-2 w-2 shrink-0 fill-green-500 text-green-500" />
+                      )}
+                      <span className="truncate">{c.title || c.gateway_thread_id}</span>
                     </div>
                     {c.updated_at && (
                       <div
