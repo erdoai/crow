@@ -94,6 +94,9 @@ class Database:
             conditions.append(f"gateway_thread_id NOT LIKE ${idx}")
             params.append("delegate-%")
             idx += 1
+            conditions.append(f"gateway != ${idx}")
+            params.append("background")
+            idx += 1
 
         where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
         params.append(limit)
@@ -161,19 +164,21 @@ class Database:
         conversation_id: str | None = None,
         source: str = "message",
         mode: str = "chat",
+        parent_conversation_id: str | None = None,
     ) -> str:
         job_id = uuid4().hex
         await self._pool.execute(
             """INSERT INTO jobs
                (id, agent_name, conversation_id, status,
-                input, source, mode, created_at)
-               VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7)""",
+                input, source, mode, parent_conversation_id, created_at)
+               VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7, $8)""",
             job_id,
             agent_name,
             conversation_id,
             input_text,
             source,
             mode,
+            parent_conversation_id,
             datetime.now(UTC),
         )
         return job_id

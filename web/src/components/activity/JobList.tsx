@@ -46,7 +46,11 @@ const statusIcon: Record<string, React.ReactNode> = {
   failed: <CircleX className="h-3 w-3 text-destructive" />,
 }
 
-export default function JobList({ jobs }: { jobs: Job[] }) {
+interface JobWithProgress extends Job {
+  _progress?: string
+}
+
+export default function JobList({ jobs }: { jobs: JobWithProgress[] }) {
   const navigate = useNavigate()
 
   const sorted = [...jobs].sort((a, b) => {
@@ -121,7 +125,9 @@ export default function JobList({ jobs }: { jobs: Job[] }) {
                 <span className="text-xs text-destructive">failed</span>
               )}
             </div>
-            <p className="text-xs text-muted-foreground mt-1 truncate">{job.input}</p>
+            <p className="text-xs text-muted-foreground mt-1 truncate">
+              {isRunning && job._progress ? job._progress : job.input}
+            </p>
             {job.error && (
               <p className="text-xs text-destructive mt-0.5 truncate">{job.error}</p>
             )}

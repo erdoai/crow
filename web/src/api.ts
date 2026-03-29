@@ -92,6 +92,7 @@ export interface Job {
   created_at: string
   started_at: string | null
   completed_at: string | null
+  parent_conversation_id: string | null
 }
 
 export interface ScheduledJob {

@@ -1,6 +1,7 @@
 """Job queue endpoints — public listing + worker-facing claim/result."""
 
 import logging
+from uuid import uuid4
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel
@@ -89,16 +90,38 @@ async def create_job_direct(
     request: Request,
     x_worker_key: str = Header(),
 ):
-    """Worker-facing: create a job directly (e.g. spawn_job tool)."""
+    """Worker-facing: create a job directly (e.g. spawn_job tool).
+
+    Background jobs get their own conversation so their intermediate turns
+    don't pollute the parent chat.  The parent conversation is stored in
+    parent_conversation_id — post_update and final results go there.
+    """
     _check_worker_key(request, x_worker_key)
     db = request.app.state.db
     bus = request.app.state.bus
 
+    parent_conversation_id = None
+    job_conversation_id = payload.conversation_id
+
+    if payload.mode == "background" and payload.conversation_id:
+        # Create a dedicated conversation for this background job.
+        # Each spawn gets a unique conversation (uuid in thread_id).
+        parent_conversation_id = payload.conversation_id
+        parent_conv = await db.get_conversation(parent_conversation_id)
+        user_id = parent_conv.get("user_id") if parent_conv else payload.user_id
+        bg_conv = await db.get_or_create_conversation(
+            gateway="background",
+            gateway_thread_id=f"bg-{uuid4().hex}",
+            user_id=user_id,
+        )
+        job_conversation_id = bg_conv["id"]
+
     job_id = await db.create_job(
         agent_name=payload.agent_name,
         input_text=payload.input,
-        conversation_id=payload.conversation_id,
+        conversation_id=job_conversation_id,
         mode=payload.mode,
+        parent_conversation_id=parent_conversation_id,
     )
 
     await bus.publish(Event(
@@ -106,7 +129,7 @@ async def create_job_direct(
         data={
             "job_id": job_id,
             "agent_name": payload.agent_name,
-            "conversation_id": payload.conversation_id,
+            "conversation_id": job_conversation_id,
             "text": payload.input,
             "mode": payload.mode,
         },
@@ -410,17 +433,28 @@ async def report_result(
     ))
 
     if job and job["conversation_id"]:
-        conv = await db.get_conversation(job["conversation_id"])
+        # Background jobs with a parent conversation: post the final
+        # result to the PARENT conversation (the user's chat thread).
+        # Also save to the bg job's own conversation for full history.
+        target_conv_id = job.get("parent_conversation_id") or job["conversation_id"]
+        conv = await db.get_conversation(target_conv_id)
 
-        # Always insert the response message — background mode only
-        # suppresses streaming chunks/typing indicator, not the final result
         msg_id = await db.insert_message(
-            conversation_id=job["conversation_id"],
+            conversation_id=target_conv_id,
             role="assistant",
             content=result.output,
             agent_name=agent_name,
         )
         await db.link_job_attachments_to_message(job_id, msg_id)
+
+        # Also save to the bg job's own conversation if different
+        if job.get("parent_conversation_id") and job["conversation_id"] != target_conv_id:
+            await db.insert_message(
+                conversation_id=job["conversation_id"],
+                role="assistant",
+                content=result.output,
+                agent_name=agent_name,
+            )
 
         if conv:
             await bus.publish(
@@ -429,7 +463,7 @@ async def report_result(
                     data={
                         "gateway": conv["gateway"],
                         "gateway_thread_id": conv["gateway_thread_id"],
-                        "conversation_id": job["conversation_id"],
+                        "conversation_id": target_conv_id,
                         "text": result.output,
                         "agent_name": agent_name,
                     },
@@ -567,7 +601,11 @@ async def post_update_message(
     request: Request,
     x_worker_key: str = Header(),
 ):
-    """Post a message to the conversation thread during a background job."""
+    """Post a message to the conversation thread during a background job.
+
+    If the job has a parent_conversation_id (background job with its own
+    conversation), post to the parent so the user sees the update in chat.
+    """
     _check_worker_key(request, x_worker_key)
     db = request.app.state.db
     bus = request.app.state.bus
@@ -576,22 +614,25 @@ async def post_update_message(
     if not job or not job.get("conversation_id"):
         return {"status": "ok"}
 
+    # Post to the parent conversation if this is a background job
+    target_conv_id = job.get("parent_conversation_id") or job["conversation_id"]
+
     agent_name = payload.agent_name or job.get("agent_name", "agent")
     msg_id = await db.insert_message(
-        conversation_id=job["conversation_id"],
+        conversation_id=target_conv_id,
         role="assistant",
         content=payload.text,
         agent_name=agent_name,
     )
 
-    conv = await db.get_conversation(job["conversation_id"])
+    conv = await db.get_conversation(target_conv_id)
     if conv:
         await bus.publish(Event(
             type=MESSAGE_RESPONSE,
             data={
                 "gateway": conv["gateway"],
                 "gateway_thread_id": conv["gateway_thread_id"],
-                "conversation_id": job["conversation_id"],
+                "conversation_id": target_conv_id,
                 "text": payload.text,
                 "agent_name": agent_name,
             },

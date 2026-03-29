@@ -65,6 +65,7 @@ function reducer(state: State, action: Action): State {
         created_at: new Date().toISOString(),
         started_at: new Date().toISOString(),
         completed_at: null,
+        parent_conversation_id: null,
         _events: [],
       }
       return { ...state, jobs: [newJob, ...state.jobs] }

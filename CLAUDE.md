@@ -481,6 +481,11 @@ Keep agents in a local folder (e.g. `./agents/`) and sync with `crow agents sync
 - Zombie job reaper: background task marks jobs as failed if running >10m with no worker heartbeat.
 - API keys generated from dashboard, bearer token auth for programmatic access.
 
+## Design principles
+
+- **No hacky UI workarounds.** If the frontend needs a blocklist, special-case filter, or manual hide/show logic to look right, the backend architecture is wrong. Fix the data model so the UI renders cleanly from the data it receives. Clean architecture means the UI is simple.
+- **Background jobs get their own conversation.** Spawned background jobs write their intermediate turns (tool calls, progress) to their own dedicated conversation, not the parent chat thread. Only `post_update` and the final result go to the parent. Users click through from activity to see the full detail.
+
 ## Gotchas and common mistakes
 
 Things that have bitten us before — check these when making changes:
