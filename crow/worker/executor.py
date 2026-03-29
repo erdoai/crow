@@ -54,7 +54,7 @@ async def _save_turn(
                 headers={"x-worker-key": worker_key},
                 json={
                     "role": role,
-                    "content": json.dumps(content),
+                    "content": content,
                 },
                 timeout=10,
             )
@@ -245,7 +245,7 @@ async def run_agent(
                 for b in collected_content:
                     if b["type"] == "text" and b["text"].strip():
                         content_parts.append({"type": "text", "text": b["text"]})
-                return json.dumps(content_parts) if content_parts else "(no response)", total_tokens
+                return content_parts if content_parts else "(no response)", total_tokens
 
             if stop_reason == "tool_use":
                 api_messages.append({

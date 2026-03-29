@@ -51,4 +51,12 @@ async def get_messages(conversation_id: str, request: Request):
                 {k: v for k, v in a.items() if k != "data"} for a in atts
             ]
 
-    return messages
+    # Filter out intermediate tool_result turns (internal bookkeeping, not user input)
+    return [
+        msg for msg in messages
+        if not (
+            msg["role"] == "user"
+            and isinstance(msg["content"], list)
+            and all(p.get("type") == "tool_result" for p in msg["content"])
+        )
+    ]

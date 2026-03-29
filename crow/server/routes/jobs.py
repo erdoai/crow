@@ -361,7 +361,7 @@ async def job_progress(
 
 class TurnPayload(BaseModel):
     role: str
-    content: str  # JSON-encoded structured content
+    content: list | str  # Structured content blocks or plain text
 
 
 @router.post("/{job_id}/turn")
@@ -400,7 +400,7 @@ async def requeue_job(
 
 
 class JobResult(BaseModel):
-    output: str
+    output: list | str
     tokens_used: int = 0
 
 
@@ -473,7 +473,7 @@ async def report_result(
                 await _send_push_notification(
                     db, conv["user_id"],
                     f"{agent_name} completed",
-                    result.output[:100],
+                    str(result.output)[:100],
                 )
 
     return {"status": "ok"}

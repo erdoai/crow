@@ -4,7 +4,7 @@ import {
   type ThreadMessageLike,
   type AppendMessage,
 } from '@assistant-ui/react'
-import { fetchJSON, type Message } from '../api'
+import { fetchJSON, type Message, type ContentPart } from '../api'
 
 export interface CurrentActivity {
   type: 'tool' | 'progress' | 'thinking'
@@ -79,7 +79,7 @@ export function useCrowRuntime(
       }
 
       const id = streamingId
-      const content = JSON.stringify(streamedParts)
+      const content = [...streamedParts]
       const agentName = data.agent_name
       setMessages((prev) => {
         const existing = prev.findIndex((m) => m.id === id)
@@ -114,7 +114,7 @@ export function useCrowRuntime(
         streamedParts.push({ type: 'progress', text: progressText })
       }
 
-      const content = JSON.stringify(streamedParts)
+      const content = [...streamedParts]
       const agentName = data.agent_name
       setMessages((prev) => {
         const existing = prev.findIndex((m) => m.id === id)
@@ -130,7 +130,7 @@ export function useCrowRuntime(
 
     source.addEventListener('message', (e) => {
       const data = JSON.parse(e.data) as {
-        text: string
+        text: string | ContentPart[]
         agent_name: string | null
         timestamp: string
         event_id: string
@@ -157,56 +157,38 @@ export function useCrowRuntime(
     return () => source.close()
   }, [conversationId])
 
-  // Filter out synthetic "user" messages that are just tool results
-  // (intermediate conversation turns saved by the worker in Claude API format)
-  const visibleMessages = messages.filter(msg => {
-    if (msg.role === 'user' && msg.content.startsWith('[')) {
-      try {
-        const parts = JSON.parse(msg.content) as { type: string }[]
-        if (parts.every(p => p.type === 'tool_result')) return false
-      } catch { /* not JSON, show normally */ }
-    }
-    return true
-  })
-
   const convertMessage = useCallback(
     (msg: Message): ThreadMessageLike => {
       let content: ThreadMessageLike['content']
 
-      // Parse structured content (JSON array of parts) or plain text
-      if (msg.role === 'assistant' && msg.content.startsWith('[')) {
-        try {
-          type Part = { type: string; text?: string; name?: string; id?: string; input?: Record<string, unknown>; result?: string; content?: string }
-          const parts = JSON.parse(msg.content) as Part[]
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const built: any[] = []
-          // Merge consecutive tool_call/tool_use + tool_result into one tool-call part
-          for (let i = 0; i < parts.length; i++) {
-            const p = parts[i]
-            if (p.type === 'tool_call' || p.type === 'tool_use') {
-              const next = parts[i + 1]
-              const result = next?.type === 'tool_result' ? (next.result ?? next.content) : undefined
-              if (next?.type === 'tool_result') i++
-              built.push({
-                type: 'tool-call',
-                toolCallId: p.id ?? `${p.name}-${i}`,
-                toolName: p.name!,
-                args: p.input ?? {},
-                result,
-              })
-            } else if (p.type === 'tool_result') {
-              // Standalone tool_result without preceding tool_call — skip
-              continue
-            } else if (p.text?.trim()) {
-              built.push({ type: 'text', text: p.text })
-            }
+      if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+        // Structured content from JSONB — map to assistant-ui format
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const built: any[] = []
+        const parts = msg.content
+        for (let i = 0; i < parts.length; i++) {
+          const p = parts[i]
+          if (p.type === 'tool_call' || p.type === 'tool_use') {
+            const next = parts[i + 1]
+            const result = next?.type === 'tool_result' ? (next.result ?? next.content) : undefined
+            if (next?.type === 'tool_result') i++
+            built.push({
+              type: 'tool-call',
+              toolCallId: p.id ?? `${p.name}-${i}`,
+              toolName: p.name!,
+              args: p.input ?? {},
+              result,
+            })
+          } else if (p.type === 'tool_result') {
+            continue
+          } else if (p.text?.trim()) {
+            built.push({ type: 'text', text: p.text })
           }
-          content = built.length > 0 ? built : [{ type: 'text', text: '(no content)' }]
-        } catch {
-          content = [{ type: 'text', text: msg.content }]
         }
+        content = built.length > 0 ? built : [{ type: 'text', text: '' }]
       } else {
-        content = [{ type: 'text', text: msg.content }]
+        const text = typeof msg.content === 'string' ? msg.content : ''
+        content = [{ type: 'text', text }]
       }
 
       return {
@@ -259,7 +241,7 @@ export function useCrowRuntime(
   )
 
   const runtime = useExternalStoreRuntime({
-    messages: visibleMessages,
+    messages,
     isRunning,
     convertMessage,
     onNew,

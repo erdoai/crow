@@ -43,10 +43,20 @@ export interface Conversation {
   updated_at: string | null
 }
 
+export type ContentPart = {
+  type: string
+  text?: string
+  name?: string
+  id?: string
+  input?: Record<string, unknown>
+  result?: string
+  content?: string
+}
+
 export interface Message {
   id: string
   role: 'user' | 'assistant'
-  content: string
+  content: string | ContentPart[]
   agent_name: string | null
 }
 

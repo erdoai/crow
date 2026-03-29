@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import UTC, datetime
 from uuid import uuid4
@@ -110,17 +111,19 @@ class Database:
         self,
         conversation_id: str,
         role: str,
-        content: str,
+        content: str | list,
         agent_name: str | None = None,
     ) -> str:
         msg_id = uuid4().hex
+        # JSONB column: lists are stored as JSON arrays, strings as JSON strings
+        content_json = json.dumps(content)
         await self._pool.execute(
             """INSERT INTO messages (id, conversation_id, role, content, agent_name, created_at)
-               VALUES ($1, $2, $3, $4, $5, $6)""",
+               VALUES ($1, $2, $3, $4::jsonb, $5, $6)""",
             msg_id,
             conversation_id,
             role,
-            content,
+            content_json,
             agent_name,
             datetime.now(UTC),
         )
@@ -204,14 +207,15 @@ class Database:
     async def complete_job(
         self,
         job_id: str,
-        output: str,
+        output: str | list,
         tokens_used: int = 0,
     ) -> None:
+        output_str = json.dumps(output) if isinstance(output, list) else output
         await self._pool.execute(
             """UPDATE jobs
                SET status = 'completed', output = $1, tokens_used = $2, completed_at = $3
                WHERE id = $4""",
-            output,
+            output_str,
             tokens_used,
             datetime.now(UTC),
             job_id,
