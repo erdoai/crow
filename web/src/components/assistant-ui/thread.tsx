@@ -190,9 +190,9 @@ function ToolCallDisplay({ toolName, args, result }: { toolName: string; args: R
           <span className="text-muted-foreground truncate">{summary}</span>
         )}
       </button>
-      {expanded && resultPreview && (
+      {expanded && (resultPreview || Object.keys(args).length > 0) && (
         <pre className="px-3 py-2 text-xs overflow-x-auto whitespace-pre-wrap text-muted-foreground border-t border-border/50 bg-muted/10 max-h-40 overflow-y-auto">
-          {resultPreview}
+          {resultPreview || JSON.stringify(args, null, 2)}
         </pre>
       )}
     </div>
