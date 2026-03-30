@@ -163,27 +163,27 @@ export function useCrowRuntime(
         timestamp: string
         event_id: string
       }
-      // Replace streaming message with final DB version, or append if
-      // this is a post_update arriving after the chat job finished.
-      setMessages((prev) => {
-        const finalMsg: Message = {
-          id: streamingId ?? data.event_id,
-          role: 'assistant',
-          content: data.text,
-          agent_name: data.agent_name,
-        }
-        if (streamingId) {
-          return prev.map((m) => m.id === streamingId ? finalMsg : m)
-        }
-        // Deduplicate: skip if we already have this message
-        if (prev.some((m) => m.id === data.event_id)) return prev
-        return [...prev, finalMsg]
-      })
       if (streamingId) {
+        // Chat job completed. The turns are already persisted via
+        // _save_turn — reload from DB to get the canonical messages
+        // and drop the ephemeral streaming message.
+        fetchJSON<Message[]>(`/conversations/${conversationId}/messages`).then(setMessages)
         streamingId = null
         streamedParts = []
         setIsRunning(false)
         setCurrentActivity(null)
+      } else {
+        // post_update or bg job result — append if not already present
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === data.event_id)) return prev
+          const msg: Message = {
+            id: data.event_id,
+            role: 'assistant',
+            content: data.text,
+            agent_name: data.agent_name,
+          }
+          return [...prev, msg]
+        })
       }
     })
 
