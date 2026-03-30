@@ -8,6 +8,7 @@ from typing import Any
 import httpx
 
 from crow.worker.tools import ToolContext, builtin_tool
+from crow.worker.tools.output import process_tool_output
 
 logger = logging.getLogger(__name__)
 
@@ -96,8 +97,6 @@ async def _handle_browse_web(inp: dict, ctx: ToolContext) -> str:
 
                 if status == "finished":
                     output = result.get("output", "(no output)")
-                    if isinstance(output, str) and len(output) > 8000:
-                        output = output[:8000] + "\n... (truncated)"
                     success = result.get("success", False)
                     steps = result.get("steps", [])
                     parts = []
@@ -106,7 +105,10 @@ async def _handle_browse_web(inp: dict, ctx: ToolContext) -> str:
                     parts.append(f"Output: {output}")
                     if steps:
                         parts.append(f"Steps taken: {len(steps)}")
-                    return "\n".join(parts)
+                    raw = "\n".join(parts)
+                    return await process_tool_output(
+                        raw, ctx=ctx, tool_name="browse_web",
+                    )
 
                 if status in ("stopped", "error"):
                     output = result.get("output", "")
