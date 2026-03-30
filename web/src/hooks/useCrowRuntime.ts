@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import {
   useExternalStoreRuntime,
   type ThreadMessageLike,
@@ -281,8 +281,17 @@ export function useCrowRuntime(
     [threadId, onConversationCreated, backgroundMode],
   )
 
+  // Filter out internal messages that shouldn't render:
+  // - user-role tool_result turns (API format, array content)
+  // - [spawn_job result: ...] handoff messages
+  const visibleMessages = useMemo(() => messages.filter((m) => {
+    if (m.role === 'user' && Array.isArray(m.content)) return false
+    if (m.role === 'user' && typeof m.content === 'string' && m.content.startsWith('[spawn_job result:')) return false
+    return true
+  }), [messages])
+
   const runtime = useExternalStoreRuntime({
-    messages,
+    messages: visibleMessages,
     isRunning,
     convertMessage,
     onNew,

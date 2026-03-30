@@ -145,11 +145,40 @@ function AssistantMessageText() {
   return <MarkdownTextPrimitive />
 }
 
+function toolSummary(toolName: string, args: Record<string, unknown>): string | null {
+  // Show a brief human-readable description instead of raw JSON
+  if (toolName === 'spawn_job') return args.agent_name ? `→ ${args.agent_name}` : null
+  if (toolName === 'delegate_to_agent') return args.agent_name ? `→ ${args.agent_name}` : null
+  if (toolName === 'execute_code') return null
+  if (toolName === 'knowledge_search') return args.query ? `"${args.query}"` : null
+  if (toolName === 'knowledge_write') return args.title ? `${args.title}` : null
+  if (toolName === 'store_set' || toolName === 'store_append') return args.key ? `key: ${args.key}` : null
+  if (toolName === 'store_get') return args.key ? `key: ${args.key}` : null
+  if (toolName === 'progress_update') return args.status ? `${args.status}` : null
+  if (toolName === 'post_update') return null
+  if (toolName === 'schedule') return args.agent_name ? `${args.agent_name}` : null
+  if (toolName === 'browse_web') return args.task ? `${String(args.task).slice(0, 60)}` : null
+  // Unknown tool — show first string arg as hint
+  const first = Object.values(args).find((v) => typeof v === 'string' && v.length > 0)
+  return first ? String(first).slice(0, 60) : null
+}
+
 function ToolCallDisplay({ toolName, args, result }: { toolName: string; args: Record<string, unknown>; result?: unknown }) {
+  const [expanded, setExpanded] = useState(false)
   const isDone = result !== undefined
+  const summary = toolSummary(toolName, args)
+  const resultStr = result != null
+    ? (typeof result === 'string' ? result : JSON.stringify(result, null, 2))
+    : null
+  // Truncate long results for display
+  const resultPreview = resultStr && resultStr.length > 300 ? resultStr.slice(0, 300) + '…' : resultStr
+
   return (
     <div className="my-2 rounded-xl border border-border bg-muted/20 overflow-hidden">
-      <div className="px-3 py-2 flex items-center gap-2 text-xs">
+      <button
+        className="w-full px-3 py-2 flex items-center gap-2 text-xs hover:bg-muted/30 transition-colors"
+        onClick={() => setExpanded((e) => !e)}
+      >
         <span className={cn(
           'flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-medium',
           isDone ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground',
@@ -157,13 +186,13 @@ function ToolCallDisplay({ toolName, args, result }: { toolName: string; args: R
           {isDone ? '✓' : '…'}
         </span>
         <span className="font-medium text-foreground">{toolName}</span>
-        {args && Object.keys(args).length > 0 && (
-          <span className="text-muted-foreground truncate max-w-[250px]">{JSON.stringify(args)}</span>
+        {summary && (
+          <span className="text-muted-foreground truncate">{summary}</span>
         )}
-      </div>
-      {isDone && (
+      </button>
+      {expanded && resultPreview && (
         <pre className="px-3 py-2 text-xs overflow-x-auto whitespace-pre-wrap text-muted-foreground border-t border-border/50 bg-muted/10 max-h-40 overflow-y-auto">
-          {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
+          {resultPreview}
         </pre>
       )}
     </div>
