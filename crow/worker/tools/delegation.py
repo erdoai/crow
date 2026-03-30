@@ -6,6 +6,7 @@ import json
 import httpx
 
 from crow.worker.tools import ToolContext, builtin_tool
+from crow.worker.tools.output import process_tool_output
 
 
 @builtin_tool(
@@ -64,7 +65,8 @@ async def _handle_delegate_to_agent(inp: dict, ctx: ToolContext) -> str:
         delegate_job_data, ctx.settings, ctx.server_url,
         ctx.headers["x-worker-key"],
     )
-    return f"[{agent_name}] {output}"
+    raw = f"[{agent_name}] {output}"
+    return await process_tool_output(raw, ctx=ctx, tool_name="delegate_to_agent")
 
 
 @builtin_tool(
@@ -148,7 +150,8 @@ async def _handle_delegate_parallel(inp: dict, ctx: ToolContext) -> str:
         return {"agent": name, "result": output}
 
     results = await asyncio.gather(*[_run_one(d) for d in delegations])
-    return json.dumps(list(results), indent=2)
+    raw = json.dumps(list(results), indent=2)
+    return await process_tool_output(raw, ctx=ctx, tool_name="delegate_parallel")
 
 
 @builtin_tool(

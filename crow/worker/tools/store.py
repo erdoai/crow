@@ -3,6 +3,7 @@
 import httpx
 
 from crow.worker.tools import ToolContext, builtin_tool
+from crow.worker.tools.output import process_tool_output
 
 
 @builtin_tool(
@@ -34,7 +35,9 @@ async def _handle_store_get(inp: dict, ctx: ToolContext) -> str:
             headers=ctx.headers,
             timeout=10,
         )
-        return resp.text
+        return await process_tool_output(
+            resp.text, ctx=ctx, tool_name="store_get",
+        )
 
 
 @builtin_tool(

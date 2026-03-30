@@ -13,6 +13,7 @@ from crow.worker.context import build_api_messages, inject_store_state
 from crow.worker.mcp_client import MCPConnection, connect_mcp
 from crow.worker.prompt import render_prompt
 from crow.worker.tools import BUILTIN_TOOLS, TOOL_HANDLERS, ToolContext
+from crow.worker.tools.output import process_tool_output
 
 logger = logging.getLogger(__name__)
 
@@ -310,6 +311,17 @@ async def run_agent(
                                 timeout=5,
                             )
 
+                # Build a ToolContext for output processing
+                tool_headers = {"x-worker-key": worker_key}
+                if job.get("_job_token"):
+                    tool_headers["x-job-token"] = job["_job_token"]
+                _tool_ctx = ToolContext(
+                    server_url=server_url,
+                    headers=tool_headers,
+                    job=job,
+                    settings=settings,
+                )
+
                 async def _exec_tool(block):
                     tool_name = block["name"]
                     tool_input = block["input"]
@@ -326,8 +338,12 @@ async def run_agent(
                         result = None
                         for conn in mcp_connections:
                             if conn.has_tool(tool_name):
-                                result = await conn.call_tool(
+                                raw = await conn.call_tool(
                                     tool_name, tool_input
+                                )
+                                result = await process_tool_output(
+                                    raw or "", ctx=_tool_ctx,
+                                    tool_name=tool_name,
                                 )
                                 break
                         if result is None:

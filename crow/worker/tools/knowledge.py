@@ -3,6 +3,7 @@
 import httpx
 
 from crow.worker.tools import ToolContext, builtin_tool
+from crow.worker.tools.output import process_tool_output
 
 
 @builtin_tool(
@@ -33,7 +34,9 @@ async def _handle_knowledge_search(inp: dict, ctx: ToolContext) -> str:
             params=params,
             timeout=10,
         )
-        return resp.text
+        return await process_tool_output(
+            resp.text, ctx=ctx, tool_name="knowledge_search",
+        )
 
 
 @builtin_tool(
