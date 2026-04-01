@@ -94,7 +94,17 @@ async def set_value(
     user = await get_current_user(request)
     uid = _resolve_uid(request, user)
     db = request.app.state.db
+    logger.info(
+        "store_set %s/%s: input type=%s",
+        namespace, key, type(payload.data).__name__,
+    )
     row = await db.store_set(namespace, key, payload.data, user_id=uid)
+    stored_type = type(row["data"]).__name__
+    if isinstance(payload.data, list) and not isinstance(row["data"], list):
+        logger.error(
+            "store_set %s/%s: DATA TYPE MISMATCH — sent %s, got back %s",
+            namespace, key, type(payload.data).__name__, stored_type,
+        )
     return {
         "namespace": namespace,
         "key": key,
