@@ -1188,7 +1188,11 @@ class Database:
             """INSERT INTO agent_store (namespace, key, user_id, data)
                VALUES ($1, $2, $3, $4::jsonb)
                ON CONFLICT (namespace, key, user_id)
-               DO UPDATE SET data = agent_store.data || $4::jsonb, updated_at = NOW()
+               DO UPDATE SET data = CASE
+                   WHEN jsonb_typeof(agent_store.data) = 'array'
+                   THEN agent_store.data || $4::jsonb
+                   ELSE $4::jsonb
+               END, updated_at = NOW()
                RETURNING *""",
             namespace,
             key,
