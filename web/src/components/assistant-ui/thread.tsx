@@ -149,7 +149,10 @@ function toolSummary(toolName: string, args: Record<string, unknown>): string | 
   // Show a brief human-readable description instead of raw JSON
   if (toolName === 'spawn_job') return args.agent_name ? `→ ${args.agent_name}` : null
   if (toolName === 'delegate_to_agent') return args.agent_name ? `→ ${args.agent_name}` : null
-  if (toolName === 'execute_code') return null
+  if (toolName === 'execute_code') {
+    const pkgs = args.packages as string[] | undefined
+    return pkgs?.length ? `using ${pkgs.join(', ')}` : 'running code'
+  }
   if (toolName === 'knowledge_search') return args.query ? `"${args.query}"` : null
   if (toolName === 'knowledge_write') return args.title ? `${args.title}` : null
   if (toolName === 'store_set' || toolName === 'store_append') return args.key ? `key: ${args.key}` : null

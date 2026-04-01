@@ -209,11 +209,20 @@ export function useCrowRuntime(
             const next = parts[i + 1]
             const result = next?.type === 'tool_result' ? (next.result ?? next.content) : undefined
             if (next?.type === 'tool_result') i++
+            const name = p.name!
+            const input = p.input ?? {}
+            // Render status tools as inline text, not tool cards
+            if (name === 'progress_update') {
+              const status = (input as Record<string, unknown>).status
+              if (status) built.push({ type: 'text', text: `*${status}*` })
+              continue
+            }
+            if (name === 'post_update') continue // notification only
             built.push({
               type: 'tool-call',
-              toolCallId: p.id ?? `${p.name}-${i}`,
-              toolName: p.name!,
-              args: p.input ?? {},
+              toolCallId: p.id ?? `${name}-${i}`,
+              toolName: name,
+              args: input,
               result,
             })
           } else if (p.type === 'tool_result') {
