@@ -1,9 +1,13 @@
-"""Store tools: store_list, store_get, store_set, store_update, store_delete."""
+"""Store tools: store_list, store_get, store_set, store_append, store_update, store_delete."""
+
+import logging
 
 import httpx
 
 from crow.worker.tools import ToolContext, builtin_tool
 from crow.worker.tools.output import process_tool_output
+
+logger = logging.getLogger(__name__)
 
 
 @builtin_tool(
@@ -105,13 +109,17 @@ async def _handle_store_set(inp: dict, ctx: ToolContext) -> str:
 )
 async def _handle_store_append(inp: dict, ctx: ToolContext) -> str:
     ns = inp.get("namespace") or ctx.job.get("agent_name", "default")
+    items = inp["items"]
+    logger.info("store_append %s/%s: %d items", ns, inp["key"], len(items))
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             f"{ctx.server_url}/api/store/{ns}/{inp['key']}/append",
             headers=ctx.headers,
-            json={"items": inp["items"]},
+            json={"items": items},
             timeout=10,
         )
+        if resp.status_code >= 400:
+            logger.error("store_append %s/%s failed: %s", ns, inp["key"], resp.text)
         return resp.text
 
 

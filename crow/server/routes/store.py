@@ -1,5 +1,6 @@
 """Agent store — persistent structured key-value store for agents."""
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -7,6 +8,8 @@ from pydantic import BaseModel
 
 from crow.auth.dependencies import get_current_user
 from crow.auth.session import verify_job_token
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/store")
 
@@ -115,11 +118,21 @@ async def append_value(
     user = await get_current_user(request)
     uid = _resolve_uid(request, user)
     db = request.app.state.db
+    # Check existing data type before append
+    existing = await db.store_get(namespace, key, user_id=uid)
+    if existing and not isinstance(existing["data"], list):
+        logger.warning(
+            "store_append %s/%s: existing data is %s, not array — resetting",
+            namespace, key, type(existing["data"]).__name__,
+        )
+        await db.store_set(namespace, key, [], user_id=uid)
+
     row = await db.store_append(namespace, key, payload.items, user_id=uid)
+    count = len(row["data"]) if isinstance(row["data"], list) else 0
     return {
         "namespace": namespace,
         "key": key,
-        "count": len(row["data"]) if isinstance(row["data"], list) else 0,
+        "count": count,
         "updated_at": row["updated_at"].isoformat(),
     }
 
