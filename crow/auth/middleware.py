@@ -11,6 +11,7 @@ from starlette.responses import JSONResponse, RedirectResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from crow.auth.dependencies import get_current_user
+from crow.auth.session import verify_job_token
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,8 @@ WORKER_KEY_PREFIXES: tuple[str, ...] = (
     "/agents",
     "/scheduled-jobs",
     "/api/store",
+    "/user",
+    "/knowledge",
 )
 
 
@@ -86,6 +89,16 @@ class AuthMiddleware:
         ):
             expected = request.app.state.settings.worker_api_key
             if worker_key == expected:
+                scope.setdefault("state", {})
+                # Extract user_id from job token if present
+                job_token = request.headers.get("x-job-token")
+                if job_token:
+                    secret = request.app.state.auth_config.get(
+                        "session_secret", "",
+                    )
+                    payload = verify_job_token(job_token, secret)
+                    if payload and payload.get("sub"):
+                        scope["state"]["user_id"] = payload["sub"]
                 await self.app(scope, receive, send)
                 return
             response = JSONResponse(

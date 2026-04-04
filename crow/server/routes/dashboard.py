@@ -61,11 +61,11 @@ class UserProfileUpdate(BaseModel):
 @router.put("/user/profile")
 async def update_user_profile(form: UserProfileUpdate, request: Request):
     """Update the current user's display name."""
-    user = await get_current_user(request)
-    if not user or user["id"] == "default":
+    uid = _uid(request)
+    if not uid:
         raise HTTPException(status_code=401)
     db = request.app.state.db
-    await db.update_user_display_name(user["id"], form.display_name.strip())
+    await db.update_user_display_name(uid, form.display_name.strip())
     return {"status": "ok", "display_name": form.display_name.strip()}
 
 
@@ -77,12 +77,12 @@ class UserAgentUpdate(BaseModel):
 @router.put("/user/agent")
 async def update_user_agent(form: UserAgentUpdate, request: Request):
     """Update the current user's personal agent."""
-    user = await get_current_user(request)
-    if not user or user["id"] == "default":
+    uid = _uid(request)
+    if not uid:
         raise HTTPException(status_code=401)
     db = request.app.state.db
     fields = {k: v for k, v in form.model_dump().items() if v is not None}
-    agent = await db.update_user_agent(user["id"], **fields)
+    agent = await db.update_user_agent(uid, **fields)
     return {
         "agent_name": agent["agent_name"],
         "avatar_url": agent.get("avatar_url"),
