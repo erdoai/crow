@@ -1,5 +1,6 @@
 """Job queue endpoints — public listing + worker-facing claim/result."""
 
+import json as _json
 import logging
 from uuid import uuid4
 
@@ -151,6 +152,92 @@ async def create_job_direct(
 # -- Worker-facing --
 
 
+async def _build_personal_agent_payload(
+    db, job: dict, user_id: str, job_token: str, messages: list[dict],
+) -> dict:
+    """Compose the personal agent payload from user_agent + skills."""
+    from crow.worker.prompt import render_prompt
+
+    user_agent = await db.get_or_create_user_agent(user_id)
+    user = await db.get_user(user_id)
+    display_name = user["display_name"] if user else "there"
+    skills = await db.list_skills_for_user(user_id)
+
+    # Load pinned knowledge (soul, identity docs) — always in system prompt
+    pinned = await db.get_pinned_knowledge(user_id)
+    soul_entries = [e for e in pinned if e["category"] == "soul"]
+
+    # Render system prompt from template
+    prompt = render_prompt("personal_agent.md.j2", {
+        "agent_name": user_agent["agent_name"],
+        "soul_entries": soul_entries,
+        "user_display_name": display_name,
+        "skills": skills,
+    })
+
+    # Union all tools from all skills + core personal agent tools
+    all_tools = set()
+    for s in skills:
+        for t in (s.get("tools") or []):
+            all_tools.add(t)
+    # Always give the personal agent these core tools
+    all_tools.update([
+        "knowledge_search", "knowledge_write",
+        "store_get", "store_set", "store_append", "store_list",
+        "progress_update", "spawn_job", "schedule",
+        "set_agent_name", "set_user_name",
+    ])
+
+    # Union all MCP servers from all skills
+    mcp_servers = []
+    resolved_names: set[str] = set()
+    for s in skills:
+        # Inline MCP configs
+        mcp_configs = s.get("mcp_configs")
+        if mcp_configs:
+            if isinstance(mcp_configs, str):
+                mcp_configs = _json.loads(mcp_configs)
+            for name, config in mcp_configs.items():
+                if name not in resolved_names:
+                    mcp_servers.append({
+                        "name": name,
+                        "url": config["url"],
+                        "headers": config.get("headers") or {},
+                    })
+                    resolved_names.add(name)
+        # Name references
+        for mcp_name in (s.get("mcp_servers") or []):
+            if mcp_name not in resolved_names:
+                mcp = await db.get_mcp_server(mcp_name)
+                if mcp:
+                    mcp_servers.append({
+                        "name": mcp["name"],
+                        "url": mcp["url"],
+                        "headers": mcp.get("headers") or {},
+                    })
+                    resolved_names.add(mcp_name)
+
+    # Load all knowledge for this user (not agent-scoped)
+    knowledge = await db.search_knowledge(user_id=user_id, limit=20)
+
+    return {
+        "job": {**job, "user_id": user_id},
+        "job_token": job_token,
+        "agent": {
+            "name": user_agent["agent_name"],
+            "description": f"{display_name}'s personal agent",
+            "prompt_template": prompt,
+            "tools": sorted(all_tools),
+            "knowledge_areas": [],
+            "max_iterations": 25,
+        },
+        "sub_agents": [],
+        "messages": messages,
+        "knowledge": knowledge,
+        "mcp_servers": mcp_servers,
+    }
+
+
 @router.get("/next/claim")
 async def claim_next_job(request: Request, x_worker_key: str = Header()):
     """Worker claims the next pending job."""
@@ -176,13 +263,12 @@ async def claim_next_job(request: Request, x_worker_key: str = Header()):
         },
     ))
 
-    # Load agent definition from DB (scoped to the user who created the conversation)
+    # Resolve user_id from the job's conversation
     job_user_id = None
     if job.get("conversation_id"):
         conv = await db.get_conversation(job["conversation_id"])
         if conv:
             job_user_id = conv.get("user_id")
-    agent_def = await db.get_agent_def(job["agent_name"], user_id=job_user_id)
 
     # Load conversation history with attachments
     messages = []
@@ -194,7 +280,20 @@ async def claim_next_job(request: Request, x_worker_key: str = Header()):
             for msg in messages:
                 msg["attachments"] = attachments_by_msg.get(msg["id"], [])
 
-    # Load relevant knowledge
+    # Issue a short-lived job token encoding user_id — workers use this
+    # for user-scoped API calls (knowledge, state) during execution.
+    secret = request.app.state.auth_config.get("session_secret", "")
+    job_token = create_job_token(job["id"], job_user_id, secret)
+
+    # --- Personal agent path ---
+    if job["agent_name"] == "personal" and job_user_id:
+        return await _build_personal_agent_payload(
+            db, job, job_user_id, job_token, messages,
+        )
+
+    # --- Classic agent_def path (backward compat) ---
+    agent_def = await db.get_agent_def(job["agent_name"], user_id=job_user_id)
+
     knowledge = []
     if agent_def and agent_def.get("knowledge_areas"):
         knowledge = await db.search_knowledge(
@@ -206,7 +305,6 @@ async def claim_next_job(request: Request, x_worker_key: str = Header()):
     # Load MCP server configs — agent-level inline configs override instance-level
     mcp_servers = []
     if agent_def:
-        # 1. Inline MCP configs from agent (highest priority)
         agent_mcp_configs = agent_def.get("mcp_configs")
         if agent_mcp_configs:
             import json as _json
@@ -219,7 +317,6 @@ async def claim_next_job(request: Request, x_worker_key: str = Header()):
                     "headers": config.get("headers") or {},
                 })
 
-        # 2. Name references → look up in instance-level mcp_servers table
         resolved_names = {s["name"] for s in mcp_servers}
         for mcp_name in (agent_def.get("mcp_servers") or []):
             if mcp_name in resolved_names:
@@ -232,10 +329,8 @@ async def claim_next_job(request: Request, x_worker_key: str = Header()):
                     "headers": mcp.get("headers") or {},
                 })
 
-    # Load agents visible to this agent (injected into prompt context as {{ agents }})
     sub_agents = []
     if agent_def:
-        # Sub-agents of this agent (for orchestrators)
         subs = await db.list_sub_agents(
             agent_def["name"],
             user_id=job_user_id,
@@ -246,18 +341,12 @@ async def claim_next_job(request: Request, x_worker_key: str = Header()):
                 for s in subs
             ]
         elif "delegate_to_agent" in (agent_def.get("tools") or []):
-            # No sub-agents but has delegate tool — show all top-level peers
             all_agents = await db.list_agent_defs(user_id=job_user_id)
             sub_agents = [
                 {"name": a["name"], "description": a.get("description", "")}
                 for a in all_agents
                 if a["name"] != agent_def["name"]
             ]
-
-    # Issue a short-lived job token encoding user_id — workers use this
-    # for user-scoped API calls (knowledge, state) during execution.
-    secret = request.app.state.auth_config.get("session_secret", "")
-    job_token = create_job_token(job["id"], job_user_id, secret)
 
     return {
         "job": {**job, "user_id": job_user_id},

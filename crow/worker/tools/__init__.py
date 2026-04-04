@@ -46,6 +46,7 @@ from crow.worker.tools import (  # noqa: E402, F401
     evaluation,
     files,
     knowledge,
+    profile,
     scheduling,
     store,
     web,

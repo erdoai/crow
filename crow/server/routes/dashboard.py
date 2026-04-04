@@ -13,19 +13,93 @@ router = APIRouter()
 
 @router.post("/onboarding")
 async def onboarding_submit(form: "OnboardingForm", request: Request):
-    """Save display name."""
+    """Save display name and create personal agent."""
     user = await get_current_user(request)
     if not user or user["id"] == "default":
         raise HTTPException(status_code=401)
 
     db = request.app.state.db
     await db.update_user_display_name(user["id"], form.display_name.strip())
-    return {"status": "ok", "redirect": "/dashboard"}
+
+    # Create the user's personal agent
+    await db.get_or_create_user_agent(user["id"])
+    if form.agent_name.strip():
+        await db.update_user_agent(
+            user["id"],
+            agent_name=form.agent_name.strip(),
+        )
+
+    return {"status": "ok", "redirect": "/"}
 
 
 def _uid(request: Request) -> str | None:
     """User ID for DB scoping (set by auth middleware). None = instance-level."""
     return getattr(request.state, "user_id", None)
+
+
+# -- Personal agent profile --
+
+
+@router.get("/user/agent")
+async def get_user_agent(request: Request):
+    """Get the current user's personal agent."""
+    user = await get_current_user(request)
+    if not user or user["id"] == "default":
+        raise HTTPException(status_code=401)
+    db = request.app.state.db
+    agent = await db.get_or_create_user_agent(user["id"])
+    return {
+        "agent_name": agent["agent_name"],
+        "avatar_url": agent.get("avatar_url"),
+    }
+
+
+class UserProfileUpdate(BaseModel):
+    display_name: str
+
+
+@router.put("/user/profile")
+async def update_user_profile(form: UserProfileUpdate, request: Request):
+    """Update the current user's display name."""
+    user = await get_current_user(request)
+    if not user or user["id"] == "default":
+        raise HTTPException(status_code=401)
+    db = request.app.state.db
+    await db.update_user_display_name(user["id"], form.display_name.strip())
+    return {"status": "ok", "display_name": form.display_name.strip()}
+
+
+class UserAgentUpdate(BaseModel):
+    agent_name: str | None = None
+    avatar_url: str | None = None
+
+
+@router.put("/user/agent")
+async def update_user_agent(form: UserAgentUpdate, request: Request):
+    """Update the current user's personal agent."""
+    user = await get_current_user(request)
+    if not user or user["id"] == "default":
+        raise HTTPException(status_code=401)
+    db = request.app.state.db
+    fields = {k: v for k, v in form.model_dump().items() if v is not None}
+    agent = await db.update_user_agent(user["id"], **fields)
+    return {
+        "agent_name": agent["agent_name"],
+        "avatar_url": agent.get("avatar_url"),
+    }
+
+
+@router.get("/skills")
+async def list_skills(request: Request):
+    """List available skills for the current user."""
+    user = await get_current_user(request)
+    uid = _uid(request) if user else None
+    db = request.app.state.db
+    skills = await db.list_skills_for_user(uid)
+    return [
+        {"name": s["name"], "description": s.get("description", "")}
+        for s in skills
+    ]
 
 
 @router.get("/api/dashboard/views")
@@ -127,8 +201,24 @@ async def dashboard_data(request: Request):
         raise HTTPException(status_code=401)
 
     db = request.app.state.db
+    uid = _uid(request)
 
-    agents = await db.list_agent_defs(user_id=_uid(request))
+    # Personal agent
+    user_agent = None
+    if auth_enabled and user["id"] != "default":
+        ua = await db.get_or_create_user_agent(user["id"])
+        user_agent = {
+            "agent_name": ua["agent_name"],
+            "avatar_url": ua.get("avatar_url"),
+        }
+
+    # Skills (agent_defs reinterpreted)
+    skills_raw = await db.list_skills_for_user(uid)
+    skills = [
+        {"name": s["name"], "description": s.get("description", "")}
+        for s in skills_raw
+    ]
+
     conversations = await db.list_conversations(
         limit=10, user_id=user["id"] if auth_enabled else None, exclude_delegates=True
     )
@@ -143,15 +233,14 @@ async def dashboard_data(request: Request):
     display_name = user.get("display_name") or "User"
 
     return {
-        "agents": [
-            {"name": a["name"], "description": a.get("description", "")}
-            for a in agents
-        ],
+        "user_agent": user_agent,
+        "skills": skills,
         "conversations": [
             {
                 "id": c["id"],
                 "gateway": c.get("gateway", ""),
                 "gateway_thread_id": c.get("gateway_thread_id", ""),
+                "title": c.get("title"),
                 "updated_at": (
                     c["updated_at"].isoformat()
                     if c.get("updated_at")
@@ -203,8 +292,63 @@ async def shared_agent_data(token: str, request: Request):
     }
 
 
+@router.get("/knowledge")
+async def list_knowledge(request: Request):
+    """List all knowledge entries for the current user (with full content)."""
+    user = await get_current_user(request)
+    if not user or user["id"] == "default":
+        raise HTTPException(status_code=401)
+    db = request.app.state.db
+    entries = await db.list_knowledge(user["id"])
+    return [
+        {
+            "id": k["id"],
+            "category": k.get("category", ""),
+            "title": k.get("title", ""),
+            "content": k.get("content", ""),
+            "pinned": k.get("pinned", False),
+            "updated_at": k["updated_at"].isoformat() if k.get("updated_at") else None,
+        }
+        for k in entries
+    ]
+
+
+@router.get("/knowledge/{knowledge_id}")
+async def get_knowledge_entry(knowledge_id: str, request: Request):
+    """Get a single knowledge entry with full content."""
+    user = await get_current_user(request)
+    if not user or user["id"] == "default":
+        raise HTTPException(status_code=401)
+    db = request.app.state.db
+    entry = await db.get_knowledge_entry(knowledge_id, user_id=user["id"])
+    if not entry:
+        raise HTTPException(status_code=404)
+    return {
+        "id": entry["id"],
+        "category": entry.get("category", ""),
+        "title": entry.get("title", ""),
+        "content": entry.get("content", ""),
+        "pinned": entry.get("pinned", False),
+        "updated_at": entry["updated_at"].isoformat() if entry.get("updated_at") else None,
+    }
+
+
+@router.delete("/knowledge/{knowledge_id}")
+async def delete_knowledge(knowledge_id: str, request: Request):
+    """Delete a knowledge entry."""
+    user = await get_current_user(request)
+    if not user or user["id"] == "default":
+        raise HTTPException(status_code=401)
+    db = request.app.state.db
+    deleted = await db.delete_knowledge(knowledge_id, user_id=user["id"])
+    if not deleted:
+        raise HTTPException(status_code=404)
+    return {"status": "deleted"}
+
+
 class OnboardingForm(BaseModel):
     display_name: str
+    agent_name: str = "assistant"
 
 
 class CreateApiKeyRequest(BaseModel):

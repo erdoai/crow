@@ -35,6 +35,16 @@ export interface Agent {
   description: string
 }
 
+export interface UserAgent {
+  agent_name: string
+  avatar_url: string | null
+}
+
+export interface Skill {
+  name: string
+  description: string
+}
+
 export interface Conversation {
   id: string
   gateway: string
@@ -72,7 +82,10 @@ export interface KnowledgeEntry {
   id: string
   category: string
   title: string
-  agent_name: string
+  content: string
+  pinned: boolean
+  updated_at: string | null
+  agent_name?: string
 }
 
 export interface DashboardView {
@@ -82,7 +95,8 @@ export interface DashboardView {
 }
 
 export interface DashboardData {
-  agents: Agent[]
+  user_agent: UserAgent | null
+  skills: Skill[]
   conversations: Conversation[]
   knowledge: KnowledgeEntry[]
   api_keys: ApiKey[]

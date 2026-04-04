@@ -30,8 +30,13 @@ export function useCrowRuntime(
   useEffect(() => {
     if (!conversationId) {
       setMessages([])
+      setIsRunning(false)
+      setCurrentActivity(null)
       return
     }
+    // Don't reset isRunning here — if we just navigated from the home screen
+    // after sending a message, the agent is still working. SSE events will
+    // set isRunning=false when the job completes.
     fetchJSON<Message[]>(`/conversations/${conversationId}/messages`).then(setMessages)
   }, [conversationId])
 

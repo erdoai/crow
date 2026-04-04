@@ -47,7 +47,7 @@ async def _handle_knowledge_search(inp: dict, ctx: ToolContext) -> str:
         "properties": {
             "category": {
                 "type": "string",
-                "enum": ["project", "area", "resource"],
+                "enum": ["project", "area", "resource", "soul"],
             },
             "title": {"type": "string"},
             "content": {"type": "string"},

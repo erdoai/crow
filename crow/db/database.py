@@ -479,6 +479,56 @@ class Database:
                 knowledge_id,
             )
 
+    async def delete_knowledge(self, knowledge_id: str, user_id: str | None = None) -> bool:
+        """Hard-delete a knowledge entry. Returns True if deleted."""
+        if user_id:
+            result = await self._pool.execute(
+                "DELETE FROM knowledge WHERE id = $1 AND user_id = $2",
+                knowledge_id,
+                user_id,
+            )
+        else:
+            result = await self._pool.execute(
+                "DELETE FROM knowledge WHERE id = $1",
+                knowledge_id,
+            )
+        return result.split()[-1] != "0"
+
+    async def get_knowledge_entry(
+        self, knowledge_id: str, user_id: str | None = None,
+    ) -> dict | None:
+        """Get a single knowledge entry by ID."""
+        if user_id:
+            row = await self._pool.fetchrow(
+                """SELECT id, agent_name, category, title, content,
+                          source_type, source_ref, tags, pinned, updated_at
+                   FROM knowledge
+                   WHERE id = $1 AND user_id = $2""",
+                knowledge_id,
+                user_id,
+            )
+        else:
+            row = await self._pool.fetchrow(
+                """SELECT id, agent_name, category, title, content,
+                          source_type, source_ref, tags, pinned, updated_at
+                   FROM knowledge WHERE id = $1""",
+                knowledge_id,
+            )
+        return dict(row) if row else None
+
+    async def list_knowledge(self, user_id: str, limit: int = 50) -> list[dict]:
+        """List all knowledge entries for a user with full content."""
+        rows = await self._pool.fetch(
+            """SELECT id, agent_name, category, title, content, pinned, updated_at
+               FROM knowledge
+               WHERE user_id = $1 AND category != 'archive'
+               ORDER BY pinned DESC, updated_at DESC
+               LIMIT $2""",
+            user_id,
+            limit,
+        )
+        return [dict(r) for r in rows]
+
     # -- Agent Definitions --
 
     async def upsert_agent_def(
@@ -583,6 +633,83 @@ class Database:
             await self._pool.execute(
                 "DELETE FROM agent_defs WHERE name = $1 AND user_id IS NULL", name
             )
+
+    # -- User Agents (personal agent per user) --
+
+    async def get_or_create_user_agent(self, user_id: str) -> dict:
+        """Get or create the personal agent for a user."""
+        row = await self._pool.fetchrow(
+            "SELECT * FROM user_agents WHERE user_id = $1", user_id
+        )
+        if row:
+            return dict(row)
+        agent_id = uuid4().hex
+        now = datetime.now(UTC)
+        await self._pool.execute(
+            """INSERT INTO user_agents
+               (id, user_id, agent_name, created_at, updated_at)
+               VALUES ($1, $2, 'assistant', $3, $4)""",
+            agent_id, user_id, now, now,
+        )
+        return {
+            "id": agent_id,
+            "user_id": user_id,
+            "agent_name": "assistant",
+            "avatar_url": None,
+            "created_at": now,
+            "updated_at": now,
+        }
+
+    async def update_user_agent(self, user_id: str, **fields) -> dict:
+        """Update fields on a user's personal agent."""
+        allowed = {"agent_name", "avatar_url"}
+        updates = {k: v for k, v in fields.items() if k in allowed}
+        if not updates:
+            return await self.get_or_create_user_agent(user_id)
+
+        sets = []
+        params = []
+        idx = 1
+        for k, v in updates.items():
+            sets.append(f"{k} = ${idx}")
+            params.append(v)
+            idx += 1
+        sets.append(f"updated_at = ${idx}")
+        params.append(datetime.now(UTC))
+        idx += 1
+        params.append(user_id)
+
+        await self._pool.execute(
+            f"UPDATE user_agents SET {', '.join(sets)} WHERE user_id = ${idx}",
+            *params,
+        )
+        return await self.get_or_create_user_agent(user_id)
+
+    async def pin_knowledge(self, knowledge_id: str) -> None:
+        """Pin a knowledge entry so it's always in the system prompt."""
+        await self._pool.execute(
+            "UPDATE knowledge SET pinned = TRUE WHERE id = $1",
+            knowledge_id,
+        )
+
+    async def get_pinned_knowledge(self, user_id: str) -> list[dict]:
+        """Get all pinned knowledge entries for a user (always in system prompt)."""
+        rows = await self._pool.fetch(
+            """SELECT id, agent_name, category, title, content,
+                      source_type, source_ref, tags, updated_at
+               FROM knowledge
+               WHERE user_id = $1 AND pinned = TRUE
+               ORDER BY category, updated_at DESC""",
+            user_id,
+        )
+        return [dict(r) for r in rows]
+
+    async def list_skills_for_user(self, user_id: str | None = None) -> list[dict]:
+        """List agent_defs as skills (excludes 'pa')."""
+        agents = await self.list_agent_defs(
+            user_id=user_id, include_all=True,
+        )
+        return [a for a in agents if a["name"] != "pa"]
 
     # -- Agent Shares --
 

@@ -174,12 +174,14 @@ async def run_agent(
 
     # Inject agent store state before the last user message.
     # Placed here (not in system prompt) to preserve prompt caching.
+    # Use job's agent_name for store namespace (matches store tools' default).
+    store_namespace = job.get("agent_name") or agent["name"]
     await inject_store_state(
         api_messages,
         agent.get("tools", []),
         server_url,
         worker_key,
-        agent["name"],
+        store_namespace,
     )
 
     # Collect built-in tool definitions

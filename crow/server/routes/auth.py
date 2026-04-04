@@ -173,8 +173,11 @@ async def verify(req: VerifyRequest, request: Request):
     secret = auth_config.get("session_secret", "")
     token = create_session_token(user["id"], user["email"], secret)
 
-    redirect_to = "/onboarding" if not user.get("display_name") else "/dashboard"
-    response = JSONResponse({"status": "ok", "redirect": redirect_to})
+    # Ensure personal agent record exists for new users
+    db2 = request.app.state.db
+    await db2.get_or_create_user_agent(user["id"])
+
+    response = JSONResponse({"status": "ok", "redirect": "/"})
     response.set_cookie(
         key="crow_session",
         value=token,

@@ -7,7 +7,7 @@ import {
   useThreadRuntime,
 } from '@assistant-ui/react'
 import { MarkdownTextPrimitive } from '@assistant-ui/react-markdown'
-import { ArrowUp, ArrowDown, Cpu, MessageSquare } from 'lucide-react'
+import { ArrowUp, ArrowDown } from 'lucide-react'
 import { getRenderer } from '@/renderers/registry'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -45,37 +45,43 @@ export function ActivityProvider({
   )
 }
 
-export function Thread() {
+export function Thread({ agentName, userName }: { agentName?: string; userName?: string }) {
   return (
-    <ThreadPrimitive.Root className="flex flex-col h-full relative">
-      <ThreadPrimitive.Viewport className="flex-1 overflow-y-auto px-3 py-4 sm:px-6">
-        <div className="max-w-3xl mx-auto flex flex-col gap-1">
-          <ThreadPrimitive.Empty>
-            <EmptyState />
-          </ThreadPrimitive.Empty>
-          <ThreadPrimitive.Messages
-            components={{
-              UserMessage,
-              AssistantMessage,
-            }}
-          />
-          <TypingIndicator />
-        </div>
-      </ThreadPrimitive.Viewport>
+    <AgentNameContext.Provider value={{ agentName: agentName || 'assistant', userName: userName || '' }}>
+      <ThreadPrimitive.Root className="flex flex-col h-full relative">
+        <ThreadPrimitive.Viewport className="flex-1 overflow-y-auto px-3 py-4 sm:px-6">
+          <div className="max-w-3xl mx-auto flex flex-col gap-1">
+            <ThreadPrimitive.Empty>
+              <EmptyState />
+            </ThreadPrimitive.Empty>
+            <ThreadPrimitive.Messages
+              components={{
+                UserMessage,
+                AssistantMessage,
+              }}
+            />
+            <TypingIndicator />
+          </div>
+        </ThreadPrimitive.Viewport>
 
-      <ThreadScrollToBottom />
-      <Composer />
-    </ThreadPrimitive.Root>
+        <ThreadScrollToBottom />
+        <Composer />
+      </ThreadPrimitive.Root>
+    </AgentNameContext.Provider>
   )
 }
 
+const AgentNameContext = createContext<{ agentName: string; userName: string }>({ agentName: 'assistant', userName: '' })
+
 function EmptyState() {
+  const { agentName, userName } = useContext(AgentNameContext)
+  const greeting = userName ? `hey ${userName}, what's on your mind?` : 'what can I help you with?'
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground py-20">
       <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
-        <MessageSquare className="h-6 w-6 text-primary/60" />
+        <span className="text-lg font-bold text-primary/60">{agentName.charAt(0).toUpperCase()}</span>
       </div>
-      <p className="text-sm">what can I help you with?</p>
+      <p className="text-sm">{greeting}</p>
     </div>
   )
 }
@@ -110,7 +116,6 @@ function AssistantMessage() {
 
   return (
     <MessagePrimitive.Root className="flex flex-col max-w-[85%] sm:max-w-[70%] self-start items-start">
-      <AgentLabel />
       <div className="px-3 py-2 sm:px-4 sm:py-2.5 rounded-2xl rounded-bl-sm text-sm leading-relaxed bg-card border border-border prose prose-sm prose-neutral dark:prose-invert max-w-none">
         <MessagePrimitive.Content
           components={{
@@ -124,20 +129,6 @@ function AssistantMessage() {
         })}
       </div>
     </MessagePrimitive.Root>
-  )
-}
-
-function AgentLabel() {
-  const agentName = useMessage(
-    (m) => (m.metadata?.custom as Record<string, unknown> | undefined)?.agentName as string | undefined,
-  )
-  if (!agentName) return null
-
-  return (
-    <div className="flex items-center gap-1 text-xs text-muted-foreground mb-0.5 pl-3">
-      <Cpu className="h-3 w-3" />
-      {agentName}
-    </div>
   )
 }
 
@@ -211,7 +202,7 @@ function Composer() {
         className={cn(
           'flex-1 rounded-xl border border-input bg-background px-4 py-3 text-sm min-h-[3.5rem] resize-none',
           'placeholder:text-muted-foreground',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
           'disabled:cursor-not-allowed disabled:opacity-50',
         )}
       />
@@ -247,14 +238,8 @@ function TypingIndicator() {
         : activity.text
     : 'thinking...'
 
-  const agentName = activity?.agentName
-
   return (
     <div className="flex flex-col max-w-[85%] sm:max-w-[70%] self-start items-start">
-      <div className="flex items-center gap-1 text-xs text-muted-foreground mb-0.5 pl-3">
-        <Cpu className="h-3 w-3" />
-        {agentName || 'agent'}
-      </div>
       <div className="px-4 py-2.5 rounded-2xl rounded-bl-sm bg-card border border-border flex items-center gap-2">
         {/* Pulse ring */}
         <span className="relative flex h-2 w-2 shrink-0">

@@ -2,7 +2,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="CROW_")
+    model_config = SettingsConfigDict(
+        env_prefix="CROW_", env_file=".env", extra="ignore",
+    )
 
     # Database — Railway Postgres (provisioned via scaffold)
     database_url: str = ""

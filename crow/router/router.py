@@ -53,21 +53,27 @@ class Router:
                 title = title.rsplit(" ", 1)[0] + "..."
             await self.db.set_conversation_title(conversation["id"], title)
 
-        # Route to specific agent if requested, continue with the
-        # conversation's current agent, or fall back to PA.
-        agent_name = event.data.get("agent")
-        if not agent_name:
-            agent_name = await self.db.last_agent_for_conversation(
-                conversation["id"]
-            ) or "pa"
+        # Authenticated users always talk to their personal agent.
+        # Unauthenticated: explicit agent > last agent > PA fallback.
+        if user_id:
+            agent_name = "personal"
+        else:
+            agent_name = event.data.get("agent")
+            if not agent_name:
+                agent_name = await self.db.last_agent_for_conversation(
+                    conversation["id"]
+                ) or "pa"
 
         # Resolve job mode: explicit request > agent default > chat
         mode = event.data.get("mode")
         if not mode:
-            agent_def = await self.db.get_agent_def(
-                agent_name, user_id=user_id
-            )
-            mode = agent_def.get("mode", "chat") if agent_def else "chat"
+            if agent_name == "personal":
+                mode = "chat"
+            else:
+                agent_def = await self.db.get_agent_def(
+                    agent_name, user_id=user_id
+                )
+                mode = agent_def.get("mode", "chat") if agent_def else "chat"
 
         job_id = await self.db.create_job(
             agent_name=agent_name,

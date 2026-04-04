@@ -226,6 +226,9 @@ async def write_knowledge(
         embedding=embedding,
         user_id=_uid(request) or _uid_from_job_token(request),
     )
+    # Auto-pin soul entries so they're always in the system prompt
+    if entry.category == "soul":
+        await db.pin_knowledge(knowledge_id)
     return {"id": knowledge_id}
 
 
