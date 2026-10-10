@@ -1,0 +1,12 @@
+# Secret-scan configuration (see .github/workflows/secret-scan.yml).
+# Extends gitleaks' default ruleset; the allowlists below cover only reviewed
+# placeholders and fixtures, scoped to the named rule and path.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Placeholder values in .env.example"
+targetRules = ["generic-api-key"]
+paths = [
+  '''^\.env\.example$''',
+]
